@@ -1,0 +1,5 @@
+Analyzing nurostride_app...                                     
+
+   info - Statements in an if should be enclosed in a block - lib\screens\patients\create_patient_screen.dart:48:21 - curly_braces_in_flow_control_structures
+   info - Statements in an if should be enclosed in a block - lib\screens\patients\create_patient_screen.dart:92:21 - curly_braces_in_flow_control_structures
+
