@@ -56,6 +56,9 @@ class Patient {
   final int age;
   final double weight;
   final String condition;
+  final String injuryType;
+  final String affectedLeg;
+  final String rehabStartDate;
   final List<double> progress;
   final List<PatientSession> sessions;
 
@@ -65,7 +68,10 @@ class Patient {
     required this.age,
     required this.weight,
     required this.condition,
-    required this.progress,
+    this.injuryType = '',
+    this.affectedLeg = 'Both',
+    this.rehabStartDate = '',
+    this.progress = const [],
     this.sessions = const [],
   });
 }
@@ -103,6 +109,10 @@ class PatientListNotifier extends Notifier<List<Patient>> {
 
   void addPatient(Patient patient) {
     state = [...state, patient];
+  }
+
+  void removePatient(String patientId) {
+    state = state.where((p) => p.id != patientId).toList();
   }
 
   void addSession(String patientId, PatientSession session) {
