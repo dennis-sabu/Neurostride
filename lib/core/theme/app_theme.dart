@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'app_colors.dart';
 
@@ -11,24 +12,18 @@ class AppTheme {
   // ── Shadow system ────────────────────────────────────────────────────
   static List<BoxShadow> get cardShadow => [
     BoxShadow(
-      color: const Color(0xFF007AFF).withValues(alpha: 0.04),
-      blurRadius: 0,
-      spreadRadius: 1,
-      offset: const Offset(0, 0),
-    ),
-    BoxShadow(
-      color: Colors.black.withValues(alpha: 0.06),
-      blurRadius: 24,
+      color: Colors.black.withValues(alpha: 0.02),
+      blurRadius: 10,
       spreadRadius: 0,
-      offset: const Offset(0, 8),
+      offset: const Offset(0, 4),
     ),
   ];
 
   static List<BoxShadow> get softShadows => [
     BoxShadow(
-      color: Colors.black.withValues(alpha: 0.04),
-      blurRadius: 16,
-      offset: const Offset(0, 4),
+      color: Colors.black.withValues(alpha: 0.02),
+      blurRadius: 8,
+      offset: const Offset(0, 2),
     ),
   ];
 
@@ -122,6 +117,11 @@ class AppTheme {
         scrolledUnderElevation: 0,
         centerTitle: true,
         iconTheme: const IconThemeData(color: AppColors.textPrimary),
+        systemOverlayStyle: const SystemUiOverlayStyle(
+          statusBarColor: Colors.transparent,
+          statusBarIconBrightness: Brightness.dark,
+          statusBarBrightness: Brightness.light,
+        ),
         titleTextStyle: GoogleFonts.inter(
           color: AppColors.textPrimary,
           fontSize: 17,
@@ -134,6 +134,7 @@ class AppTheme {
         elevation: 0,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(radius),
+          side: const BorderSide(color: AppColors.greyLight, width: 1.0),
         ),
         margin: EdgeInsets.zero,
       ),
@@ -155,9 +156,10 @@ class AppTheme {
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
-          foregroundColor: AppColors.primary,
+          foregroundColor: AppColors.textPrimary,
+          backgroundColor: AppColors.surface,
           padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 28),
-          side: const BorderSide(color: AppColors.primary, width: 1.5),
+          side: const BorderSide(color: AppColors.greyLight, width: 1.5),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
           ),

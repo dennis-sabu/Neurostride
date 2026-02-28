@@ -1,28 +1,29 @@
 import 'package:flutter/material.dart';
 
 class AppColors {
-  // Light background (off-white, premium feel)
-  static const Color background = Color(0xFFF5F7FA);
+  // Premium Slate / Off-white Background
+  static const Color background = Color(0xFFF8FAFC); // Slate 50
 
-  // White card surfaces
+  // White Glass Surfaces
   static const Color surface = Color(0xFFFFFFFF);
 
-  // Electric Blue — primary actions & highlights
-  static const Color primary = Color(0xFF007AFF);
+  // Soft Indigo — Primary Actions
+  static const Color primary = Color(0xFF5E5CE6);
+  static const Color primaryLight = Color(0xFF7D7CFF);
 
-  // Success / Vitals Green
-  static const Color accent = Color(0xFF34C759);
-  static const Color success = Color(0xFF34C759);
+  // Success / Goals (Emerald / Sage)
+  static const Color accent = Color(0xFF10B981);
+  static const Color success = Color(0xFF10B981);
 
-  // Error / Warning Red
-  static const Color warning = Color(0xFFFF3B30);
+  // Error / Warning (Rose)
+  static const Color warning = Color(0xFFF43F5E);
 
-  // Subtle border colour
-  static const Color greyLight = Color(0xFFE5E9F0);
+  // Subtle border / Glass stroke
+  static const Color greyLight = Color(0xFFE2E8F0); // Slate 200
 
-  // Secondary text
-  static const Color greyText = Color(0xFF8E95A3);
+  // Secondary text (Slate 500)
+  static const Color greyText = Color(0xFF64748B);
 
-  // Near-black primary text
-  static const Color textPrimary = Color(0xFF0B0E14);
+  // Near-black primary text (Slate 900)
+  static const Color textPrimary = Color(0xFF0F172A);
 }

@@ -188,7 +188,7 @@ class _PatientManagementScreenState
           : ListView.separated(
               padding: const EdgeInsets.all(20),
               itemCount: patients.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 12),
+              separatorBuilder: (_, _) => const SizedBox(height: 12),
               itemBuilder: (ctx, i) {
                 final p = patients[i];
                 return _PatientCard(

@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:intl/intl.dart';
+import 'package:lucide_icons/lucide_icons.dart';
+import '../../providers/bluetooth_provider.dart';
 import '../../providers/patient_provider.dart';
-import '../../providers/app_settings_provider.dart';
+import '../../providers/workout_history_provider.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/app_colors.dart';
 
@@ -12,13 +16,60 @@ class DashboardScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
-    final patients = ref.watch(patientListProvider);
-    final settings = ref.watch(appSettingsProvider);
-    final isMock = settings.isMockMode;
-    final todaySessions = patients.fold<int>(
+    final isConnected = ref.watch(bluetoothProvider).isConnected;
+    final history = ref.watch(workoutHistoryProvider);
+
+    // Calculate greeting based on time of day
+    final hour = DateTime.now().hour;
+    String greeting;
+    if (hour < 12) {
+      greeting = 'Good Morning,';
+    } else if (hour < 17) {
+      greeting = 'Good Afternoon,';
+    } else {
+      greeting = 'Good Evening,';
+    }
+
+    // Calculate Movement Points (1 pt per 10 secs active)
+    final points = history.fold<int>(
       0,
-      (sum, p) => sum + p.sessions.length,
+      (sum, item) => sum + (item.durationSeconds ~/ 10),
     );
+
+    // Calculate Streak (consecutive days)
+    int streak = 0;
+    if (history.isNotEmpty) {
+      streak = 1;
+      DateTime currentDate = DateTime(
+        history.first.endTime.year,
+        history.first.endTime.month,
+        history.first.endTime.day,
+      );
+      for (int i = 1; i < history.length; i++) {
+        DateTime prevDate = DateTime(
+          history[i].endTime.year,
+          history[i].endTime.month,
+          history[i].endTime.day,
+        );
+        final diff = currentDate.difference(prevDate).inDays;
+        if (diff == 1) {
+          streak++;
+          currentDate = prevDate;
+        } else if (diff > 1) {
+          break; // Streak broken
+        }
+      }
+    }
+
+    // Calculate Today's Exercise Count
+    final today = DateTime.now();
+    final todaysExercises = history.where((item) {
+      return item.endTime.year == today.year &&
+          item.endTime.month == today.month &&
+          item.endTime.day == today.day &&
+          item.type == WorkoutType.exercise; // Only count actual exercises
+    }).length;
+    final dailyGoal = 10;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -26,45 +77,47 @@ class DashboardScreen extends ConsumerWidget {
         child: CustomScrollView(
           physics: const BouncingScrollPhysics(),
           slivers: [
-            // ── Header ──────────────────────────────────────────────
+            // ── Premium Header ──────────────────────────────────────────────
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
+                padding: const EdgeInsets.fromLTRB(24, 20, 24, 10),
                 child: Row(
                   children: [
-                    Image.asset(
-                      'assets/logo.png',
-                      width: 32,
-                      height: 32,
-                      errorBuilder: (ctx, err, st) => Container(
-                        padding: const EdgeInsets.all(6),
-                        decoration: BoxDecoration(
-                          color: AppColors.primary.withValues(alpha: 0.12),
-                          shape: BoxShape.circle,
+                    Container(
+                      padding: const EdgeInsets.all(2),
+                      decoration: const BoxDecoration(
+                        shape: BoxShape.circle,
+                        gradient: LinearGradient(
+                          colors: [AppColors.primary, AppColors.accent],
                         ),
-                        child: const Icon(
-                          Icons.medical_services_rounded,
-                          size: 20,
+                      ),
+                      child: const CircleAvatar(
+                        radius: 20,
+                        backgroundColor: AppColors.surface,
+                        child: Icon(
+                          LucideIcons.user,
                           color: AppColors.primary,
+                          size: 20,
                         ),
                       ),
                     ),
-                    const SizedBox(width: 10),
+                    const SizedBox(width: 14),
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Nurostride',
-                          style: theme.textTheme.titleLarge?.copyWith(
-                            letterSpacing: -0.5,
-                            fontWeight: FontWeight.w800,
+                          greeting,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: 0.5,
                           ),
                         ),
                         Text(
-                          'Clinical Platform',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            fontSize: 11,
-                            letterSpacing: 0.5,
+                          'Dennis Sabu',
+                          style: theme.textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.5,
+                            fontSize: 22,
                           ),
                         ),
                       ],
@@ -77,120 +130,119 @@ class DashboardScreen extends ConsumerWidget {
                         decoration: BoxDecoration(
                           color: AppColors.surface,
                           shape: BoxShape.circle,
-                          boxShadow: AppTheme.cardShadow,
+                          border: Border.all(color: AppColors.greyLight),
+                          boxShadow: AppTheme.softShadows,
                         ),
                         child: const Icon(
-                          Icons.settings_outlined,
+                          LucideIcons.settings,
                           size: 20,
                           color: AppColors.textPrimary,
                         ),
                       ),
                     ),
                   ],
-                ),
+                ).animate().fade(duration: 400.ms).slideY(begin: -0.2, end: 0),
               ),
             ),
 
             SliverPadding(
-              padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
+              padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
               sliver: SliverList(
                 delegate: SliverChildListDelegate([
-                  // ── Sensor card ────────────────────────────────────
-                  _SensorCard(isMock: isMock),
+                  // ── The "Pulse" Card (Hero Goal) ──────────────────────────
+                  _PulseCard(completedCount: todaysExercises, goal: dailyGoal)
+                      .animate()
+                      .fade(duration: 500.ms, delay: 100.ms)
+                      .slideY(begin: 0.1, end: 0),
                   const SizedBox(height: 20),
 
-                  // ── Stats row ──────────────────────────────────────
+                  // ── Bento Grid: Metrics ───────────────────────────────────
                   Row(
                     children: [
                       Expanded(
-                        child: _StatCard(
-                          value: '$todaySessions',
-                          label: 'Sessions',
-                          icon: Icons.analytics_rounded,
-                          gradient: LinearGradient(
-                            colors: [
-                              AppColors.primary,
-                              AppColors.primary.withValues(alpha: 0.75),
-                            ],
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                          ),
-                        ),
+                        child:
+                            _BentoCard(
+                                  title: 'Streak',
+                                  value: '$streak',
+                                  unit: 'Days',
+                                  icon: LucideIcons.flame,
+                                  color: AppColors.warning, // Orange/Rose
+                                )
+                                .animate()
+                                .fade(duration: 500.ms, delay: 200.ms)
+                                .slideY(begin: 0.1, end: 0),
                       ),
                       const SizedBox(width: 14),
                       Expanded(
-                        child: _StatCard(
-                          value: '${patients.length}',
-                          label: 'Patients',
-                          icon: Icons.people_rounded,
-                          gradient: LinearGradient(
-                            colors: [
-                              AppColors.accent,
-                              AppColors.accent.withValues(alpha: 0.75),
-                            ],
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                          ),
-                        ),
+                        child:
+                            _BentoCard(
+                                  title: 'Movement',
+                                  value: '$points',
+                                  unit: 'Pts',
+                                  icon: LucideIcons.activity,
+                                  color: AppColors.primary,
+                                )
+                                .animate()
+                                .fade(duration: 500.ms, delay: 300.ms)
+                                .slideY(begin: 0.1, end: 0),
                       ),
                     ],
                   ),
+                  const SizedBox(height: 14),
+
+                  // ── Bento Grid: Weekly Progress Graph ─────────────────────
+                  GestureDetector(
+                        onTap: () => Navigator.pushNamed(context, '/history'),
+                        child: const _ActivityGraphCard(),
+                      )
+                      .animate()
+                      .fade(duration: 500.ms, delay: 400.ms)
+                      .slideY(begin: 0.1, end: 0),
                   const SizedBox(height: 28),
 
-                  // ── Patient sparklines ─────────────────────────────
-                  if (patients.isNotEmpty) ...[
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          'Recent Patients',
-                          style: theme.textTheme.titleMedium,
-                        ),
-                        TextButton(
-                          onPressed: () =>
-                              Navigator.pushNamed(context, '/patients'),
-                          child: Text(
-                            'See all',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: AppColors.primary,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                      ],
+                  // ── Primary Call To Action (Focus Mode) ───────────────────
+                  Text(
+                    'Quick Start',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
                     ),
-                    const SizedBox(height: 10),
-                    ...patients
-                        .take(2)
-                        .map(
-                          (p) => Padding(
-                            padding: const EdgeInsets.only(bottom: 10),
-                            child: _MiniPatientCard(
-                              patient: p,
-                              onTap: () =>
-                                  Navigator.pushNamed(context, '/patients'),
-                            ),
-                          ),
-                        ),
-                    const SizedBox(height: 18),
-                  ],
-
-                  // ── Actions ────────────────────────────────────────
-                  Text('Quick Actions', style: theme.textTheme.titleMedium),
+                  ).animate().fade(delay: 500.ms),
                   const SizedBox(height: 14),
                   _PrimaryAction(
-                    title: 'New Assessment',
-                    subtitle: 'Select patient & start live session',
-                    icon: Icons.play_arrow_rounded,
-                    onTap: () => Navigator.pushNamed(context, '/patients'),
-                  ),
-                  const SizedBox(height: 12),
-                  _SecondaryAction(
-                    title: 'Patient Directory',
-                    subtitle: 'View records & session history',
-                    icon: Icons.folder_shared_rounded,
-                    onTap: () => Navigator.pushNamed(context, '/patients'),
-                  ),
+                        title: isConnected ? 'Start Workout' : 'Connect Sensor',
+                        subtitle: isConnected
+                            ? 'Enter focus mode'
+                            : 'Pair to track movement',
+                        icon: isConnected
+                            ? LucideIcons.play
+                            : LucideIcons.bluetooth,
+                        isConnected: isConnected,
+                        onTap: () {
+                          if (isConnected) {
+                            Navigator.pushNamed(context, '/exercise_menu');
+                          } else {
+                            Navigator.pushNamed(context, '/bluetooth_connect');
+                          }
+                        },
+                      )
+                      .animate()
+                      .fade(duration: 500.ms, delay: 600.ms)
+                      .slideY(begin: 0.1, end: 0),
+
+                  // ── Recent Sessions List ──
+                  if (history.isNotEmpty) ...[
+                    const SizedBox(height: 32),
+                    Text(
+                      'Recent Sessions',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ).animate().fade(delay: 500.ms),
+                    const SizedBox(height: 16),
+                    ...history
+                        .take(5)
+                        .map((session) => _SessionListTile(session: session)),
+                  ],
                 ]),
               ),
             ),
@@ -201,99 +253,119 @@ class DashboardScreen extends ConsumerWidget {
   }
 }
 
-// ── Sensor Status Card ───────────────────────────────────────────────────
-class _SensorCard extends StatelessWidget {
-  final bool isMock;
-  const _SensorCard({required this.isMock});
+// ── The "Pulse" Card (Today's Goal) ──────────────────────────────────────
+class _PulseCard extends StatelessWidget {
+  final int completedCount;
+  final int goal;
+
+  const _PulseCard({required this.completedCount, required this.goal});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final color = isMock ? AppColors.primary : AppColors.accent;
+
+    // Calculate progress fraction & percentage
+    final double progressStr = (completedCount / goal).clamp(0.0, 1.0);
+    final int displayPercent = (progressStr * 100).toInt();
     return Container(
+      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            color.withValues(alpha: 0.08),
-            color.withValues(alpha: 0.04),
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: color.withValues(alpha: 0.2), width: 1.5),
+        color: AppColors.textPrimary, // Slate 900
+        borderRadius: BorderRadius.circular(28),
         boxShadow: AppTheme.cardShadow,
       ),
-      padding: const EdgeInsets.all(20),
       child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: color.withValues(alpha: 0.12),
-              boxShadow: [
-                BoxShadow(
-                  color: color.withValues(alpha: 0.2),
-                  blurRadius: 12,
-                  offset: const Offset(0, 4),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Today\'s Goal',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: Colors.white.withValues(alpha: 0.7),
+                  fontWeight: FontWeight.w500,
                 ),
-              ],
-            ),
-            child: Icon(
-              isMock ? Icons.developer_mode : Icons.bluetooth_connected,
-              color: color,
-              size: 22,
-            ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'ESP32 Sensor Node',
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    Container(
-                      width: 6,
-                      height: 6,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: color,
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      isMock ? 'DEMO MODE' : 'LIVE STREAM',
-                      style: theme.textTheme.labelSmall?.copyWith(
-                        color: color,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 1.2,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Text(
-              isMock ? 'Mock' : 'Active',
-              style: theme.textTheme.labelSmall?.copyWith(
-                color: color,
-                fontWeight: FontWeight.bold,
               ),
+              const SizedBox(height: 8),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    '$displayPercent',
+                    style: theme.textTheme.displayMedium?.copyWith(
+                      color: Colors.white,
+                      fontSize: 48,
+                      height: 1,
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 6, left: 4),
+                    child: Text(
+                      '%',
+                      style: theme.textTheme.titleLarge?.copyWith(
+                        color: Colors.white.withValues(alpha: 0.7),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                displayPercent >= 100
+                    ? 'Goal Achieved! Amazing work.'
+                    : displayPercent == 0
+                    ? 'Start your first session!'
+                    : 'Almost there! Keep moving.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: Colors.white.withValues(alpha: 0.9),
+                ),
+              ),
+            ],
+          ),
+
+          // Apple Watch style ring wrapper
+          SizedBox(
+            width: 80,
+            height: 80,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                CircularProgressIndicator(
+                  value: 1.0,
+                  strokeWidth: 8,
+                  color: Colors.white.withValues(alpha: 0.1),
+                ),
+                CircularProgressIndicator(
+                  value: progressStr,
+                  strokeWidth: 8,
+                  strokeCap: StrokeCap.round,
+                  color: AppColors.accent, // Sage / Emerald
+                ).animate().custom(
+                  duration: 1.seconds,
+                  builder: (context, value, child) {
+                    return CircularProgressIndicator(
+                      value: progressStr * value,
+                      strokeWidth: 8,
+                      strokeCap: StrokeCap.round,
+                      color: AppColors.accent,
+                    );
+                  },
+                ),
+                Center(
+                  child:
+                      const Icon(
+                            LucideIcons.target,
+                            color: Colors.white,
+                            size: 28,
+                          )
+                          .animate(
+                            onPlay: (controller) =>
+                                controller.repeat(reverse: true),
+                          )
+                          .scaleXY(end: 1.1, duration: 1.seconds),
+                ),
+              ],
             ),
           ),
         ],
@@ -302,51 +374,146 @@ class _SensorCard extends StatelessWidget {
   }
 }
 
-// ── Gradient Stat Card ───────────────────────────────────────────────────
-class _StatCard extends StatelessWidget {
-  final String value, label;
+// ── Bento Card ───────────────────────────────────────────────────────────
+class _BentoCard extends StatelessWidget {
+  final String title, value, unit;
   final IconData icon;
-  final LinearGradient gradient;
-  const _StatCard({
+  final Color color;
+
+  const _BentoCard({
+    required this.title,
     required this.value,
-    required this.label,
+    required this.unit,
     required this.icon,
-    required this.gradient,
+    required this.color,
   });
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        gradient: gradient,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: gradient.colors.first.withValues(alpha: 0.3),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
-          ),
-        ],
+        border: Border.all(color: AppColors.greyLight, width: 1),
+        boxShadow: AppTheme.softShadows,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, color: Colors.white.withValues(alpha: 0.85), size: 22),
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.1),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, color: color, size: 20),
+          ),
           const SizedBox(height: 16),
           Text(
-            value,
-            style: Theme.of(context).textTheme.displaySmall?.copyWith(
-              color: Colors.white,
-              fontWeight: FontWeight.w900,
+            title,
+            style: theme.textTheme.bodySmall?.copyWith(
+              fontWeight: FontWeight.w600,
             ),
           ),
-          const SizedBox(height: 2),
-          Text(
-            label,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: Colors.white.withValues(alpha: 0.8),
-              fontWeight: FontWeight.w500,
+          const SizedBox(height: 4),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Text(
+                value,
+                style: theme.textTheme.headlineLarge?.copyWith(
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              const SizedBox(width: 4),
+              Text(
+                unit,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Activity Graph Bento ──────────────────────────────────────────────────
+class _ActivityGraphCard extends StatelessWidget {
+  const _ActivityGraphCard();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    // Original motivating mock data
+    List<FlSpot> mockData = const [
+      FlSpot(0, 20),
+      FlSpot(1, 45),
+      FlSpot(2, 35),
+      FlSpot(3, 80),
+      FlSpot(4, 60),
+      FlSpot(5, 90),
+      FlSpot(6, 75),
+    ];
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: AppColors.greyLight, width: 1),
+        boxShadow: AppTheme.softShadows,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Weekly Progress',
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const Icon(
+                LucideIcons.trendingUp,
+                color: AppColors.primary,
+                size: 18,
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          SizedBox(
+            height: 100,
+            child: LineChart(
+              LineChartData(
+                gridData: const FlGridData(show: false),
+                titlesData: const FlTitlesData(show: false),
+                borderData: FlBorderData(show: false),
+                lineBarsData: [
+                  LineChartBarData(
+                    spots: mockData,
+                    isCurved: true,
+                    color: AppColors.primary,
+                    barWidth: 4,
+                    dotData: const FlDotData(show: false),
+                    belowBarData: BarAreaData(
+                      show: true,
+                      color: AppColors.primary.withValues(alpha: 0.1),
+                    ),
+                  ),
+                ],
+                minY: 0,
+                maxY: 100,
+              ),
             ),
           ),
         ],
@@ -355,146 +522,40 @@ class _StatCard extends StatelessWidget {
   }
 }
 
-// ── Mini Patient Card ────────────────────────────────────────────────────
-class _MiniPatientCard extends StatelessWidget {
-  final Patient patient;
-  final VoidCallback onTap;
-  const _MiniPatientCard({required this.patient, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final initials = patient.name.split(' ').map((w) => w[0]).take(2).join();
-    final lastScore = patient.progress.isNotEmpty
-        ? patient.progress.last.toStringAsFixed(0)
-        : '—';
-
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(20),
-          boxShadow: AppTheme.cardShadow,
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: AppColors.primary.withValues(alpha: 0.1),
-              ),
-              alignment: Alignment.center,
-              child: Text(
-                initials,
-                style: theme.textTheme.titleSmall?.copyWith(
-                  color: AppColors.primary,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    patient.name,
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  Text(
-                    patient.condition,
-                    style: theme.textTheme.bodySmall,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-              ),
-            ),
-            if (patient.progress.length > 1)
-              SizedBox(
-                width: 60,
-                height: 32,
-                child: LineChart(
-                  LineChartData(
-                    gridData: const FlGridData(show: false),
-                    titlesData: const FlTitlesData(show: false),
-                    borderData: FlBorderData(show: false),
-                    lineBarsData: [
-                      LineChartBarData(
-                        spots: patient.progress
-                            .asMap()
-                            .entries
-                            .map((e) => FlSpot(e.key.toDouble(), e.value))
-                            .toList(),
-                        isCurved: true,
-                        color: AppColors.accent,
-                        barWidth: 2,
-                        dotData: const FlDotData(show: false),
-                        belowBarData: BarAreaData(
-                          show: true,
-                          color: AppColors.accent.withValues(alpha: 0.12),
-                        ),
-                      ),
-                    ],
-                    minY: 0,
-                    maxY: 100,
-                  ),
-                ),
-              ),
-            const SizedBox(width: 10),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(
-                  lastScore,
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    color: AppColors.accent,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                Text('/100', style: theme.textTheme.labelSmall),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ── Primary CTA ──────────────────────────────────────────────────────────
+// ── Primary Action Card ───────────────────────────────────────────────────
 class _PrimaryAction extends StatelessWidget {
   final String title, subtitle;
   final IconData icon;
+  final bool isConnected;
   final VoidCallback onTap;
+
   const _PrimaryAction({
     required this.title,
     required this.subtitle,
     required this.icon,
+    required this.isConnected,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final color = isConnected ? AppColors.primary : AppColors.textPrimary;
+
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.all(22),
+        padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            colors: [AppColors.primary, Color(0xFF3399FF)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
+          color: color,
           borderRadius: BorderRadius.circular(24),
-          boxShadow: AppTheme.primaryGlow,
+          boxShadow: [
+            BoxShadow(
+              color: color.withValues(alpha: 0.3),
+              blurRadius: 16,
+              offset: const Offset(0, 8),
+            ),
+          ],
         ),
         child: Row(
           children: [
@@ -504,9 +565,9 @@ class _PrimaryAction extends StatelessWidget {
                 shape: BoxShape.circle,
                 color: Colors.white.withValues(alpha: 0.2),
               ),
-              child: Icon(icon, color: Colors.white, size: 26),
+              child: Icon(icon, color: Colors.white, size: 24),
             ),
-            const SizedBox(width: 18),
+            const SizedBox(width: 16),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -516,22 +577,30 @@ class _PrimaryAction extends StatelessWidget {
                     style: theme.textTheme.titleMedium?.copyWith(
                       color: Colors.white,
                       fontWeight: FontWeight.w700,
+                      letterSpacing: 0.5,
                     ),
                   ),
                   const SizedBox(height: 2),
                   Text(
                     subtitle,
                     style: theme.textTheme.bodySmall?.copyWith(
-                      color: Colors.white.withValues(alpha: 0.75),
+                      color: Colors.white.withValues(alpha: 0.8),
                     ),
                   ),
                 ],
               ),
             ),
-            Icon(
-              Icons.arrow_forward_rounded,
-              color: Colors.white.withValues(alpha: 0.8),
-              size: 20,
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(
+                LucideIcons.chevronRight,
+                color: Colors.white,
+                size: 20,
+              ),
             ),
           ],
         ),
@@ -540,63 +609,84 @@ class _PrimaryAction extends StatelessWidget {
   }
 }
 
-// ── Secondary Action ─────────────────────────────────────────────────────
-class _SecondaryAction extends StatelessWidget {
-  final String title, subtitle;
-  final IconData icon;
-  final VoidCallback onTap;
-  const _SecondaryAction({
-    required this.title,
-    required this.subtitle,
-    required this.icon,
-    required this.onTap,
-  });
+class _SessionListTile extends StatelessWidget {
+  final WorkoutHistoryEntry session;
+  const _SessionListTile({required this.session});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(24),
-          boxShadow: AppTheme.cardShadow,
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: AppColors.primary.withValues(alpha: 0.1),
-              ),
-              child: Icon(icon, color: AppColors.primary, size: 24),
+    final isGait = session.exerciseType == null;
+    final title = isGait ? 'Free Walk Mode' : session.exerciseType!.name;
+    final scoreText = isGait
+        ? '${session.peakAngle?.toStringAsFixed(1) ?? '0'}° Peak'
+        : '${session.finalScore?.toInt() ?? 0} Score';
+
+    final minutes = session.durationSeconds ~/ 60;
+    final seconds = session.durationSeconds % 60;
+    final timeString = minutes > 0 ? '${minutes}m ${seconds}s' : '${seconds}s';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.greyLight),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: AppColors.primary.withValues(alpha: 0.1),
+              shape: BoxShape.circle,
             ),
-            const SizedBox(width: 18),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(subtitle, style: theme.textTheme.bodySmall),
-                ],
-              ),
-            ),
-            Icon(
-              Icons.chevron_right,
-              color: AppColors.greyText.withValues(alpha: 0.5),
+            child: Icon(
+              isGait ? LucideIcons.footprints : LucideIcons.activity,
+              color: AppColors.primary,
               size: 20,
             ),
-          ],
-        ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                Text(
+                  DateFormat('MMM d, h:mm a').format(session.endTime),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: AppColors.greyText,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                scoreText,
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              Text(
+                timeString,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: AppColors.greyText,
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

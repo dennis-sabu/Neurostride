@@ -86,7 +86,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      'Sign in to clinical portal',
+                      'Sign in to NuroStride',
                       style: theme.textTheme.bodyMedium?.copyWith(
                         color: AppColors.greyText,
                       ),

@@ -73,7 +73,8 @@ class LiveSessionNotifier extends Notifier<LiveSessionState> {
   @override
   LiveSessionState build() => const LiveSessionState();
 
-  void startSession() {
+  /// Start a session. Accepts a stream so it works with both mock and live BT.
+  void startSession({required Stream<GaitData> dataStream}) {
     state = const LiveSessionState(isRunning: true);
 
     // 1-second clock tick
@@ -83,11 +84,11 @@ class LiveSessionNotifier extends Notifier<LiveSessionState> {
       }
     });
 
-    // Subscribe to mock gait stream
-    _gaitSub = gaitDataStream().listen((data) {
+    // Subscribe to the provided stream (mock or Bluetooth)
+    _gaitSub = dataStream.listen((data) {
       if (state.isPaused || !state.isRunning) return;
 
-      final angle = data.leftKneeFlexion;
+      final angle = data.kneeAngle;
       final history = [...state.angleHistory, angle];
       if (history.length > 60) history.removeAt(0);
 
