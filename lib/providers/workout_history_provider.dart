@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'patient_provider.dart';
@@ -34,12 +35,18 @@ class WorkoutHistoryNotifier extends Notifier<List<WorkoutHistoryEntry>> {
   }
 
   Future<void> addEntry(WorkoutHistoryEntry entry) async {
-    final updated = [entry, ...state]; // Insert at start
-    state = updated;
+    // ✅ Insert new entry at front, cap at 100 to prevent unbounded storage
+    final updated = [entry, ...state];
+    final capped = updated.length > 100 ? updated.sublist(0, 100) : updated;
+    state = capped;
 
-    final prefs = await SharedPreferences.getInstance();
-    final encoded = jsonEncode(updated.map((e) => e.toJson()).toList());
-    await prefs.setString(_key, encoded);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final encoded = jsonEncode(capped.map((e) => e.toJson()).toList());
+      await prefs.setString(_key, encoded);
+    } catch (e) {
+      debugPrint('[WorkoutHistory] Save failed: $e');
+    }
   }
 }
 

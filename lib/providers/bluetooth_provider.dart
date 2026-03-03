@@ -306,7 +306,7 @@ class BluetoothNotifier extends Notifier<BluetoothState> {
 
   void listenForDisconnection() {
     _dataSub?.cancel();
-    _buffer = '';
+    _buffer = ''; // ✅ always clear stale bytes before starting a new stream
     _dataSub = _connection?.input?.listen(
       (Uint8List data) {
         final stringData = String.fromCharCodes(data);

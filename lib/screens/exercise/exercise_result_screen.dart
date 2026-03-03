@@ -20,47 +20,35 @@ class ExerciseResultScreen extends ConsumerWidget {
     final patientList = ref.watch(patientListProvider);
 
     Patient? activePatient;
-    double? previousBest;
-
     if (patientId != null) {
       final iter = patientList.where((p) => p.id == patientId);
       activePatient = iter.isNotEmpty ? iter.first : null;
-
-      if (activePatient != null) {
-        // Find previous best for this exercise type
-        final pastResults = activePatient.exerciseHistory
-            .where((r) => r.exerciseType == result.exerciseType)
-            .toList();
-
-        if (pastResults.isNotEmpty) {
-          previousBest = pastResults
-              .map((r) => r.finalScore)
-              .reduce((a, b) => a > b ? a : b);
-        }
-      }
     }
 
-    // Determine color based on final score
-    Color scoreColor = AppColors.success;
-    String scoreText = "Excellent";
+    // Completion category based on reps
+    final repFraction = result.totalReps > 0
+        ? result.completedReps / result.totalReps
+        : 0.0;
+    final completionColor = repFraction >= 1.0
+        ? AppColors.success
+        : (repFraction >= 0.6 ? AppColors.primary : Colors.orange);
 
-    if (result.finalScore < 50) {
-      scoreColor = AppColors.warning;
-      scoreText = "Needs Improvement";
-    } else if (result.finalScore < 70) {
-      scoreColor = Colors.orange;
-      scoreText = "Fair";
-    } else if (result.finalScore < 90) {
-      scoreColor = AppColors.primary;
-      scoreText = "Good";
-    }
+    final completionLabel = repFraction >= 1.0
+        ? 'Session Complete!'
+        : (repFraction >= 0.6 ? 'Good Effort' : 'Keep Going');
+
+    final encouragement = repFraction >= 1.0
+        ? 'Excellent work — all reps completed.'
+        : (repFraction >= 0.6
+              ? 'You completed most of the session. Keep it up!'
+              : 'Every rep counts. Try again to build strength.');
 
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('Exercise Result'),
+        title: const Text('Session Summary'),
         backgroundColor: Colors.transparent,
-        automaticallyImplyLeading: false, // Don't allow normal back navigation
+        automaticallyImplyLeading: false,
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -68,19 +56,19 @@ class ExerciseResultScreen extends ConsumerWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // ── Top Score Badge ──
+              // ── Completion Badge ──────────────────────────────────────────
               Center(
                 child: Container(
-                  width: 200,
-                  height: 200,
+                  width: 180,
+                  height: 180,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     color: AppColors.surface,
                     boxShadow: [
                       BoxShadow(
-                        color: scoreColor.withValues(alpha: 0.2),
-                        blurRadius: 30,
-                        spreadRadius: 5,
+                        color: completionColor.withValues(alpha: 0.2),
+                        blurRadius: 32,
+                        spreadRadius: 6,
                       ),
                     ],
                   ),
@@ -88,36 +76,42 @@ class ExerciseResultScreen extends ConsumerWidget {
                     alignment: Alignment.center,
                     children: [
                       SizedBox(
-                        width: 170,
-                        height: 170,
+                        width: 150,
+                        height: 150,
                         child: CircularProgressIndicator(
-                          value: result.finalScore / 100,
-                          strokeWidth: 12,
+                          value: repFraction.clamp(0.0, 1.0),
+                          strokeWidth: 10,
                           backgroundColor: AppColors.greyLight.withValues(
                             alpha: 0.5,
                           ),
-                          valueColor: AlwaysStoppedAnimation<Color>(scoreColor),
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            completionColor,
+                          ),
                           strokeCap: StrokeCap.round,
                         ),
                       ),
                       Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
+                          Icon(
+                            repFraction >= 1.0
+                                ? Icons.check_circle_rounded
+                                : Icons.directions_run_rounded,
+                            color: completionColor,
+                            size: 36,
+                          ),
+                          const SizedBox(height: 4),
                           Text(
-                            '${result.finalScore.toInt()}',
-                            style: theme.textTheme.displayLarge?.copyWith(
-                              fontSize: 64,
+                            '${result.completedReps}/${result.totalReps}',
+                            style: theme.textTheme.titleLarge?.copyWith(
                               fontWeight: FontWeight.w900,
                               color: AppColors.textPrimary,
-                              height: 1.0,
                             ),
                           ),
                           Text(
-                            scoreText.toUpperCase(),
+                            'reps',
                             style: theme.textTheme.labelSmall?.copyWith(
-                              color: scoreColor,
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: 1.5,
+                              color: AppColors.greyText,
                             ),
                           ),
                         ],
@@ -126,17 +120,29 @@ class ExerciseResultScreen extends ConsumerWidget {
                   ),
                 ),
               ),
+              const SizedBox(height: 20),
+
+              // ── Completion label & encouragement ─────────────────────────
+              Text(
+                completionLabel,
+                style: theme.textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w800,
+                  color: completionColor,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                encouragement,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: AppColors.greyText,
+                  height: 1.5,
+                ),
+                textAlign: TextAlign.center,
+              ),
               const SizedBox(height: 32),
 
-              Text(
-                'Performance Breakdown',
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: 16),
-
-              // ── Score Breakdown Card ──
+              // ── Session Stats Card ───────────────────────────────────────
               Container(
                 padding: const EdgeInsets.all(24),
                 decoration: BoxDecoration(
@@ -145,195 +151,126 @@ class ExerciseResultScreen extends ConsumerWidget {
                   boxShadow: AppTheme.cardShadow,
                 ),
                 child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _ScoreBar(
-                      label: 'Angle Accuracy (40%)',
-                      value: result.angleAccuracy,
-                      color: AppColors.primary,
-                    ),
-                    const SizedBox(height: 20),
-                    _ScoreBar(
-                      label: 'Stability (30%)',
-                      value: result.stabilityScore,
-                      color: Colors.orange,
-                    ),
-                    const SizedBox(height: 20),
-                    _ScoreBar(
-                      label: 'Hold Duration (20%)',
-                      value: result.holdDurationScore,
-                      color: AppColors.success,
-                    ),
-                    const SizedBox(height: 20),
-                    _ScoreBar(
-                      label: 'Smoothness (10%)',
-                      value: result.smoothnessScore,
-                      color: Colors.purple,
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 24),
-
-              // ── Session Stats Card ──
-              Container(
-                padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(
-                  color: AppColors.surface,
-                  borderRadius: BorderRadius.circular(24),
-                  boxShadow: AppTheme.cardShadow,
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Icon(
-                                Icons.arrow_upward,
-                                size: 16,
-                                color: AppColors.greyText,
-                              ),
-                              const SizedBox(width: 6),
-                              Text(
-                                'Peak Angle',
-                                style: theme.textTheme.labelMedium,
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            '${result.peakAngle.toStringAsFixed(1)}°',
-                            style: theme.textTheme.titleLarge?.copyWith(
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
+                    Text(
+                      'Session Details',
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.greyText,
+                        letterSpacing: 0.8,
                       ),
                     ),
-                    Container(width: 1, height: 40, color: AppColors.greyLight),
-                    Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.only(left: 24),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Icon(
-                                  Icons.timer_outlined,
-                                  size: 16,
-                                  color: AppColors.greyText,
-                                ),
-                                const SizedBox(width: 6),
-                                Text(
-                                  'Hold Time',
-                                  style: theme.textTheme.labelMedium,
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              '${result.holdTime}s',
-                              style: theme.textTheme.titleLarge?.copyWith(
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ],
+                    const SizedBox(height: 20),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _StatItem(
+                            icon: Icons.arrow_upward_rounded,
+                            label: 'Peak Angle',
+                            value: '${result.peakAngle.toStringAsFixed(1)}°',
+                            color: AppColors.primary,
+                          ),
                         ),
-                      ),
+                        Container(
+                          width: 1,
+                          height: 44,
+                          color: AppColors.greyLight,
+                        ),
+                        Expanded(
+                          child: _StatItem(
+                            icon: Icons.repeat_rounded,
+                            label: 'Reps Done',
+                            value: '${result.completedReps}',
+                            color: AppColors.success,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                    const Divider(color: AppColors.greyLight),
+                    const SizedBox(height: 20),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _StatItem(
+                            icon: Icons.timer_outlined,
+                            label: 'Hold Time',
+                            value: '${result.holdTime}s',
+                            color: Colors.orange,
+                          ),
+                        ),
+                        Container(
+                          width: 1,
+                          height: 44,
+                          color: AppColors.greyLight,
+                        ),
+                        Expanded(
+                          child: _StatItem(
+                            icon: Icons.sensors,
+                            label: 'Data Quality',
+                            value: _qualityLabel(result.overallDataQuality),
+                            color: _qualityColor(result.overallDataQuality),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
               ),
+              const SizedBox(height: 16),
 
-              // ── Previous Best Comparison Card (Fix 8) ──
-              if (previousBest != null)
+              // ── Calibration quality note ─────────────────────────────────
+              if (result.calibrationQuality == CalibrationQuality.poor) ...[
                 Container(
-                  margin: const EdgeInsets.only(top: 24),
-                  padding: const EdgeInsets.all(20),
+                  padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: result.finalScore > previousBest
-                        ? AppColors.success.withValues(alpha: 0.1)
-                        : AppColors.surface,
-                    borderRadius: BorderRadius.circular(24),
+                    color: Colors.orange.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(16),
                     border: Border.all(
-                      color: result.finalScore >= previousBest
-                          ? AppColors.success.withValues(alpha: 0.5)
-                          : AppColors.greyLight,
+                      color: Colors.orange.withValues(alpha: 0.3),
                     ),
                   ),
                   child: Row(
                     children: [
-                      Icon(
-                        result.finalScore >= previousBest
-                            ? Icons.trending_up
-                            : Icons.history,
-                        color: result.finalScore >= previousBest
-                            ? AppColors.success
-                            : AppColors.greyText,
-                        size: 32,
+                      const Icon(
+                        Icons.info_outline,
+                        color: Colors.orange,
+                        size: 20,
                       ),
-                      const SizedBox(width: 16),
+                      const SizedBox(width: 10),
                       Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              result.finalScore > previousBest
-                                  ? 'New Personal Best!'
-                                  : (result.finalScore == previousBest
-                                        ? 'Tied Personal Best!'
-                                        : 'Previous Best'),
-                              style: theme.textTheme.titleMedium?.copyWith(
-                                fontWeight: FontWeight.bold,
-                                color: result.finalScore >= previousBest
-                                    ? AppColors.success
-                                    : AppColors.textPrimary,
-                              ),
-                            ),
-                            Text(
-                              'Your previous highest score was ${previousBest.toInt()}',
-                              style: theme.textTheme.bodyMedium?.copyWith(
-                                color: AppColors.greyText,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Text(
-                        '${(result.finalScore - previousBest).abs().toInt()}${result.finalScore >= previousBest ? ' pts ↑' : ' pts ↓'}',
-                        style: theme.textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          color: result.finalScore >= previousBest
-                              ? AppColors.success
-                              : AppColors.warning,
+                        child: Text(
+                          'Calibration was slightly unstable. For best accuracy, hold still during the calibration phase.',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: AppColors.greyText,
+                            height: 1.4,
+                          ),
                         ),
                       ),
                     ],
                   ),
                 ),
+                const SizedBox(height: 16),
+              ],
 
-              const SizedBox(height: 32),
+              const SizedBox(height: 8),
 
-              // ── Actions ──
+              // ── Save & Finish ────────────────────────────────────────────
               ElevatedButton(
                 onPressed: () {
                   try {
-                    // Save local exercise result
                     if (activePatient != null) {
                       ref
                           .read(patientListProvider.notifier)
                           .addExerciseResult(activePatient.id, result);
                     }
 
-                    // Fix 10: Store full history entry
                     final entry = WorkoutHistoryEntry(
                       id: DateTime.now().millisecondsSinceEpoch.toString(),
                       startTime: result.date.subtract(
                         Duration(seconds: result.holdTime),
-                      ), // Approx start time
+                      ),
                       endTime: result.date,
                       patientId: activePatient?.id ?? 'user_1',
                       patientName: activePatient?.name ?? 'My Profile',
@@ -353,18 +290,26 @@ class ExerciseResultScreen extends ConsumerWidget {
 
                     ref.read(workoutHistoryProvider.notifier).addEntry(entry);
 
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Workout saved successfully!'),
-                        backgroundColor: AppColors.success,
-                      ),
-                    );
+                    // ✅ Show SnackBar before navigating so the context is still valid.
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Session saved successfully.'),
+                          backgroundColor: AppColors.success,
+                          behavior: SnackBarBehavior.floating,
+                        ),
+                      );
+                      Navigator.of(
+                        context,
+                      ).pushNamedAndRemoveUntil('/dashboard', (route) => false);
+                    }
                   } catch (e) {
                     debugPrint('Save error: $e');
-                  } finally {
-                    Navigator.of(
-                      context,
-                    ).pushNamedAndRemoveUntil('/dashboard', (route) => false);
+                    if (context.mounted) {
+                      Navigator.of(
+                        context,
+                      ).pushNamedAndRemoveUntil('/dashboard', (route) => false);
+                    }
                   }
                 },
                 style: ElevatedButton.styleFrom(
@@ -374,14 +319,16 @@ class ExerciseResultScreen extends ConsumerWidget {
                     borderRadius: BorderRadius.circular(16),
                   ),
                 ),
-                child: const Text('SAVE & FINISH'),
+                child: const Text('Save & Return to Dashboard'),
               ),
               const SizedBox(height: 12),
               OutlinedButton(
-                onPressed: () {
-                  // Pop back to the specific exercise instruction
-                  Navigator.of(context).pop();
-                },
+                // ✅ Navigate to the instruction screen for the SAME exercise
+                // instead of pop() which may go nowhere after pushReplacement.
+                onPressed: () => Navigator.of(context).pushNamed(
+                  '/exercise_instruction',
+                  arguments: result.exerciseType,
+                ),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: AppColors.textPrimary,
                   side: const BorderSide(color: AppColors.greyLight, width: 2),
@@ -390,7 +337,7 @@ class ExerciseResultScreen extends ConsumerWidget {
                     borderRadius: BorderRadius.circular(16),
                   ),
                 ),
-                child: const Text('TRY AGAIN'),
+                child: const Text('Try Again'),
               ),
               const SizedBox(height: 24),
             ],
@@ -399,14 +346,42 @@ class ExerciseResultScreen extends ConsumerWidget {
       ),
     );
   }
+
+  String _qualityLabel(SensorQuality q) {
+    switch (q) {
+      case SensorQuality.good:
+        return 'Good';
+      case SensorQuality.degraded:
+        return 'Fair';
+      case SensorQuality.poor:
+        return 'Poor';
+      case SensorQuality.disconnected:
+        return 'Lost';
+    }
+  }
+
+  Color _qualityColor(SensorQuality q) {
+    switch (q) {
+      case SensorQuality.good:
+        return AppColors.success;
+      case SensorQuality.degraded:
+        return Colors.orange;
+      case SensorQuality.poor:
+      case SensorQuality.disconnected:
+        return AppColors.warning;
+    }
+  }
 }
 
-class _ScoreBar extends StatelessWidget {
+// ── Stat Item ────────────────────────────────────────────────────────────────
+class _StatItem extends StatelessWidget {
+  final IconData icon;
   final String label;
-  final double value;
+  final String value;
   final Color color;
 
-  const _ScoreBar({
+  const _StatItem({
+    required this.icon,
     required this.label,
     required this.value,
     required this.color,
@@ -415,39 +390,33 @@ class _ScoreBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              label,
-              style: theme.textTheme.labelLarge?.copyWith(
-                color: AppColors.greyText,
-                fontWeight: FontWeight.w600,
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 15, color: color),
+              const SizedBox(width: 5),
+              Text(
+                label,
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: AppColors.greyText,
+                ),
               ),
-            ),
-            Text(
-              '${value.toInt()}%',
-              style: theme.textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.bold,
-                color: AppColors.textPrimary,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 10),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(10),
-          child: LinearProgressIndicator(
-            value: value / 100,
-            minHeight: 10,
-            backgroundColor: AppColors.greyLight.withValues(alpha: 0.5),
-            valueColor: AlwaysStoppedAnimation<Color>(color),
+            ],
           ),
-        ),
-      ],
+          const SizedBox(height: 6),
+          Text(
+            value,
+            style: theme.textTheme.titleLarge?.copyWith(
+              fontWeight: FontWeight.bold,
+              color: AppColors.textPrimary,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

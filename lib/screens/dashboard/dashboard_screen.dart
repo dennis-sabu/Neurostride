@@ -4,6 +4,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import '../../providers/app_settings_provider.dart';
 import '../../providers/bluetooth_provider.dart';
 import '../../providers/patient_provider.dart';
 import '../../providers/workout_history_provider.dart';
@@ -18,6 +19,18 @@ class DashboardScreen extends ConsumerWidget {
     final theme = Theme.of(context);
     final isConnected = ref.watch(bluetoothProvider).isConnected;
     final history = ref.watch(workoutHistoryProvider);
+
+    // ✅ Resolve user display name from selected patient or fall back gracefully
+    final settings = ref.watch(appSettingsProvider);
+    final patients = ref.watch(patientListProvider);
+    final currentPatient = patients
+        .where((p) => p.id == settings.selectedPatientId)
+        .firstOrNull;
+    final displayName =
+        currentPatient?.name.split(' ').first ??
+        (patients.isNotEmpty
+            ? patients.first.name.split(' ').first
+            : 'Athlete');
 
     // Calculate greeting based on time of day
     final hour = DateTime.now().hour;
@@ -36,27 +49,32 @@ class DashboardScreen extends ConsumerWidget {
       (sum, item) => sum + (item.durationSeconds ~/ 10),
     );
 
-    // Calculate Streak (consecutive days)
+    // ✅ Fixed streak: compare calendar dates, not consecutive list positions.
+    // A streak is the number of *calendar days* with at least one session,
+    // counting back from today with no gaps.
     int streak = 0;
     if (history.isNotEmpty) {
-      streak = 1;
-      DateTime currentDate = DateTime(
-        history.first.endTime.year,
-        history.first.endTime.month,
-        history.first.endTime.day,
-      );
-      for (int i = 1; i < history.length; i++) {
-        DateTime prevDate = DateTime(
-          history[i].endTime.year,
-          history[i].endTime.month,
-          history[i].endTime.day,
-        );
-        final diff = currentDate.difference(prevDate).inDays;
-        if (diff == 1) {
-          streak++;
-          currentDate = prevDate;
-        } else if (diff > 1) {
-          break; // Streak broken
+      final today = DateUtils.dateOnly(DateTime.now());
+      DateTime? prevDay;
+      for (final item in history) {
+        final itemDay = DateUtils.dateOnly(item.endTime);
+        if (prevDay == null) {
+          // First entry — start the streak from today or yesterday
+          final diff = today.difference(itemDay).inDays;
+          if (diff > 1) break; // No sessions today or yesterday — streak is 0
+          streak = 1;
+          prevDay = itemDay;
+        } else {
+          final diff = prevDay.difference(itemDay).inDays;
+          if (diff == 1) {
+            streak++;
+            prevDay = itemDay;
+          } else if (diff == 0) {
+            // Same day as last entry — continue without incrementing
+            prevDay = itemDay;
+          } else {
+            break; // Gap found — streak ends
+          }
         }
       }
     }
@@ -69,7 +87,7 @@ class DashboardScreen extends ConsumerWidget {
           item.endTime.day == today.day &&
           item.type == WorkoutType.exercise; // Only count actual exercises
     }).length;
-    final dailyGoal = 10;
+    const dailyGoal = 10;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -113,7 +131,7 @@ class DashboardScreen extends ConsumerWidget {
                           ),
                         ),
                         Text(
-                          'Dennis Sabu',
+                          displayName,
                           style: theme.textTheme.titleLarge?.copyWith(
                             fontWeight: FontWeight.w800,
                             letterSpacing: -0.5,
@@ -445,23 +463,38 @@ class _BentoCard extends StatelessWidget {
 }
 
 // ── Activity Graph Bento ──────────────────────────────────────────────────
-class _ActivityGraphCard extends StatelessWidget {
+class _ActivityGraphCard extends ConsumerWidget {
   const _ActivityGraphCard();
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+    final history = ref.watch(workoutHistoryProvider);
 
-    // Original motivating mock data
-    List<FlSpot> mockData = const [
-      FlSpot(0, 20),
-      FlSpot(1, 45),
-      FlSpot(2, 35),
-      FlSpot(3, 80),
-      FlSpot(4, 60),
-      FlSpot(5, 90),
-      FlSpot(6, 75),
-    ];
+    // ✅ Build 7-day real data: count duration minutes per calendar day
+    final today = DateUtils.dateOnly(DateTime.now());
+    final Map<int, double> dayMinutes = {};
+    for (final item in history) {
+      final itemDay = DateUtils.dateOnly(item.endTime);
+      final daysAgo = today.difference(itemDay).inDays;
+      if (daysAgo >= 0 && daysAgo < 7) {
+        dayMinutes[daysAgo] =
+            (dayMinutes[daysAgo] ?? 0) + (item.durationSeconds / 60.0);
+      }
+    }
+
+    // Build FlSpot list: x=0 is 6 days ago → x=6 is today
+    final List<FlSpot> spots = List.generate(7, (i) {
+      final daysAgo = 6 - i;
+      return FlSpot(i.toDouble(), (dayMinutes[daysAgo] ?? 0).clamp(0, 120));
+    });
+
+    final dayLabels = List.generate(7, (i) {
+      final day = today.subtract(Duration(days: 6 - i));
+      return DateFormat('E').format(day); // Mon, Tue, …
+    });
+
+    final hasData = spots.any((s) => s.y > 0);
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -478,7 +511,7 @@ class _ActivityGraphCard extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                'Weekly Progress',
+                'Weekly Activity',
                 style: theme.textTheme.titleSmall?.copyWith(
                   fontWeight: FontWeight.w700,
                 ),
@@ -493,28 +526,67 @@ class _ActivityGraphCard extends StatelessWidget {
           const SizedBox(height: 20),
           SizedBox(
             height: 100,
-            child: LineChart(
-              LineChartData(
-                gridData: const FlGridData(show: false),
-                titlesData: const FlTitlesData(show: false),
-                borderData: FlBorderData(show: false),
-                lineBarsData: [
-                  LineChartBarData(
-                    spots: mockData,
-                    isCurved: true,
-                    color: AppColors.primary,
-                    barWidth: 4,
-                    dotData: const FlDotData(show: false),
-                    belowBarData: BarAreaData(
-                      show: true,
-                      color: AppColors.primary.withValues(alpha: 0.1),
+            child: hasData
+                ? LineChart(
+                    LineChartData(
+                      gridData: const FlGridData(show: false),
+                      borderData: FlBorderData(show: false),
+                      titlesData: FlTitlesData(
+                        topTitles: const AxisTitles(
+                          sideTitles: SideTitles(showTitles: false),
+                        ),
+                        rightTitles: const AxisTitles(
+                          sideTitles: SideTitles(showTitles: false),
+                        ),
+                        leftTitles: const AxisTitles(
+                          sideTitles: SideTitles(showTitles: false),
+                        ),
+                        bottomTitles: AxisTitles(
+                          sideTitles: SideTitles(
+                            showTitles: true,
+                            reservedSize: 22,
+                            getTitlesWidget: (value, _) {
+                              final idx = value.toInt();
+                              if (idx < 0 || idx >= dayLabels.length) {
+                                return const SizedBox.shrink();
+                              }
+                              return Text(
+                                dayLabels[idx],
+                                style: theme.textTheme.labelSmall?.copyWith(
+                                  fontSize: 10,
+                                  color: AppColors.greyText,
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      ),
+                      lineBarsData: [
+                        LineChartBarData(
+                          spots: spots,
+                          isCurved: true,
+                          color: AppColors.primary,
+                          barWidth: 3,
+                          dotData: const FlDotData(show: false),
+                          belowBarData: BarAreaData(
+                            show: true,
+                            color: AppColors.primary.withValues(alpha: 0.1),
+                          ),
+                        ),
+                      ],
+                      minY: 0,
+                      maxY: 60,
+                    ),
+                  )
+                : Center(
+                    child: Text(
+                      'Complete a session to see your activity',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: AppColors.greyText,
+                      ),
+                      textAlign: TextAlign.center,
                     ),
                   ),
-                ],
-                minY: 0,
-                maxY: 100,
-              ),
-            ),
           ),
         ],
       ),

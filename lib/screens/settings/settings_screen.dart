@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/bluetooth_provider.dart';
+import '../../providers/voice_coach_provider.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -9,6 +10,7 @@ class SettingsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final btState = ref.watch(bluetoothProvider);
+    final voiceEnabled = ref.watch(voiceCoachProvider);
 
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
@@ -103,6 +105,64 @@ class SettingsScreen extends ConsumerWidget {
                 ),
               ],
             ],
+            const SizedBox(height: 20),
+
+            // ── Voice Coach Section ───────────────────────────────────
+            _SectionHeader('Exercise Coach'),
+            Container(
+              margin: const EdgeInsets.only(bottom: 10),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surface,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.07),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    voiceEnabled
+                        ? Icons.record_voice_over_rounded
+                        : Icons.voice_over_off_rounded,
+                    color: voiceEnabled
+                        ? theme.colorScheme.primary.withValues(alpha: 0.7)
+                        : theme.colorScheme.onSurface.withValues(alpha: 0.35),
+                    size: 22,
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Voice Coach',
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        Text(
+                          voiceEnabled
+                              ? 'Speaks coaching cues during exercise'
+                              : 'Voice guidance is off',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurface.withValues(
+                              alpha: 0.45,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Switch.adaptive(
+                    value: voiceEnabled,
+                    onChanged: (_) =>
+                        ref.read(voiceCoachProvider.notifier).toggle(),
+                    activeColor: theme.colorScheme.primary,
+                  ),
+                ],
+              ),
+            ),
             const SizedBox(height: 20),
 
             // ── App Section ──────────────────────────────────────────

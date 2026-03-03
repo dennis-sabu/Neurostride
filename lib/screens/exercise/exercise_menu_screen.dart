@@ -128,6 +128,81 @@ class ExerciseMenuScreen extends ConsumerWidget {
                   );
                 },
               ),
+              const SizedBox(height: 16),
+
+              // ── Ankle Dorsiflexion ──
+              _ExerciseCard(
+                type: ExerciseType.ankleDorsiflexion,
+                iconData: Icons.directions_walk_rounded,
+                bestScore: getBestScore(ExerciseType.ankleDorsiflexion),
+                onTap: () {
+                  Navigator.pushNamed(
+                    context,
+                    '/exercise_instruction',
+                    arguments: ExerciseType.ankleDorsiflexion,
+                  );
+                },
+              ),
+              const SizedBox(height: 16),
+
+              // ── Terminal Knee Extension ──
+              _ExerciseCard(
+                type: ExerciseType.terminalKneeExtension,
+                iconData: Icons.compress_rounded,
+                bestScore: getBestScore(ExerciseType.terminalKneeExtension),
+                onTap: () {
+                  Navigator.pushNamed(
+                    context,
+                    '/exercise_instruction',
+                    arguments: ExerciseType.terminalKneeExtension,
+                  );
+                },
+              ),
+              const SizedBox(height: 16),
+
+              // ── Hip Abduction ──
+              _ExerciseCard(
+                type: ExerciseType.hipAbduction,
+                iconData: Icons.swap_horiz_rounded,
+                bestScore: getBestScore(ExerciseType.hipAbduction),
+                onTap: () {
+                  Navigator.pushNamed(
+                    context,
+                    '/exercise_instruction',
+                    arguments: ExerciseType.hipAbduction,
+                  );
+                },
+              ),
+              const SizedBox(height: 16),
+
+              // ── Calf Raise Hold ──
+              _ExerciseCard(
+                type: ExerciseType.calfRaiseHold,
+                iconData: Icons.trending_up_rounded,
+                bestScore: getBestScore(ExerciseType.calfRaiseHold),
+                onTap: () {
+                  Navigator.pushNamed(
+                    context,
+                    '/exercise_instruction',
+                    arguments: ExerciseType.calfRaiseHold,
+                  );
+                },
+              ),
+              const SizedBox(height: 16),
+
+              // ── Single Leg Balance ──
+              _ExerciseCard(
+                type: ExerciseType.singleLegBalance,
+                iconData: Icons.self_improvement_rounded,
+                bestScore: getBestScore(ExerciseType.singleLegBalance),
+                onTap: () {
+                  Navigator.pushNamed(
+                    context,
+                    '/exercise_instruction',
+                    arguments: ExerciseType.singleLegBalance,
+                  );
+                },
+              ),
             ],
           ),
         ),
@@ -206,7 +281,8 @@ class _ExerciseCard extends StatelessWidget {
                 if (bestScore != null) ...[
                   Text('Best', style: theme.textTheme.labelSmall),
                   Text(
-                    '$bestScore',
+                    // ✅ Show em-dash for 0 score (no completed exercises yet)
+                    bestScore! > 0 ? '$bestScore' : '—',
                     style: theme.textTheme.titleMedium?.copyWith(
                       color: AppColors.accent,
                       fontWeight: FontWeight.bold,

@@ -4,8 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 // Screens
-import 'screens/auth/login_screen.dart';
-import 'screens/auth/signup_screen.dart';
+import 'screens/onboarding/onboarding_screen.dart';
 import 'screens/dashboard/dashboard_screen.dart';
 import 'screens/dashboard/history_screen.dart'; // <--- Added History Screen
 import 'screens/patients/patient_management_screen.dart';
@@ -58,7 +57,7 @@ class NurostrideApp extends StatelessWidget {
       title: 'Nurostride',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
-      initialRoute: '/login',
+      initialRoute: '/onboarding',
       onGenerateRoute: _generateRoute,
       builder: (context, child) {
         return AnnotatedRegion<SystemUiOverlayStyle>(
@@ -77,11 +76,8 @@ class NurostrideApp extends StatelessWidget {
     Widget page;
 
     switch (settings.name) {
-      case '/login':
-        page = const LoginScreen();
-        break;
-      case '/signup':
-        page = const SignUpScreen();
+      case '/onboarding':
+        page = const OnboardingScreen();
         break;
       case '/dashboard':
         page = const DashboardScreen();

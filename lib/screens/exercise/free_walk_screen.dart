@@ -4,7 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../../core/theme/app_colors.dart';
+import '../../providers/app_settings_provider.dart';
 import '../../providers/free_walk_provider.dart';
+import '../../providers/gait_provider.dart';
 import '../../providers/patient_provider.dart';
 import '../../providers/workout_history_provider.dart';
 
@@ -16,6 +18,17 @@ class FreeWalkScreen extends ConsumerWidget {
     final theme = Theme.of(context);
     final walkState = ref.watch(freeWalkProvider);
     final notifier = ref.read(freeWalkProvider.notifier);
+
+    // ✅ Use the real selected patient from settings
+    final settings = ref.watch(appSettingsProvider);
+    final patients = ref.watch(patientListProvider);
+    final currentPatient = patients
+        .where((p) => p.id == settings.selectedPatientId)
+        .firstOrNull;
+
+    // ✅ Get live heart rate from sensor (null = not available)
+    final liveGait = ref.watch(gaitDataProvider);
+    final heartRate = liveGait.whenOrNull(data: (g) => g.heartRate);
 
     // Format duration helper
     String formatDuration(int seconds) {
@@ -39,31 +52,39 @@ class FreeWalkScreen extends ConsumerWidget {
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
         actions: [
-          // Dummy Heart Rate Indicator
-          Center(
-            child: Container(
-              margin: const EdgeInsets.only(right: 16),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.favorite, color: Colors.redAccent, size: 16),
-                  const SizedBox(width: 4),
-                  Text(
-                    '72 bpm',
-                    style: theme.textTheme.labelMedium?.copyWith(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
+          // ✅ Only show heart rate when sensor actually reports it
+          if (heartRate != null)
+            Center(
+              child: Container(
+                margin: const EdgeInsets.only(right: 16),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.favorite,
+                      color: Colors.redAccent,
+                      size: 16,
                     ),
-                  ),
-                ],
+                    const SizedBox(width: 4),
+                    Text(
+                      '$heartRate bpm',
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
         ],
       ),
       body: SafeArea(
@@ -239,15 +260,15 @@ class FreeWalkScreen extends ConsumerWidget {
                     if (walkState.isRecording) {
                       notifier.stopRecording();
 
-                      // Save the session to persistent storage
+                      // ✅ Save with real patient name and ID from settings
                       final entry = WorkoutHistoryEntry(
                         id: DateTime.now().millisecondsSinceEpoch.toString(),
                         startTime: DateTime.now().subtract(
                           Duration(seconds: walkState.durationSeconds),
                         ),
                         endTime: DateTime.now(),
-                        patientId: 'local_user',
-                        patientName: 'Alex',
+                        patientId: currentPatient?.id ?? 'local_user',
+                        patientName: currentPatient?.name ?? 'My Profile',
                         type: WorkoutType.exercise,
                         durationSeconds: walkState.durationSeconds,
                         peakAngle: walkState.peakAngle,

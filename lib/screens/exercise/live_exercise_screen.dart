@@ -1,10 +1,11 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_tts/flutter_tts.dart';
 import '../../core/theme/app_colors.dart';
 import '../../providers/exercise_provider.dart';
 import '../../providers/bluetooth_provider.dart';
-import '../../providers/gait_provider.dart';
+import '../../providers/voice_coach_provider.dart';
 
 class LiveExerciseScreen extends ConsumerStatefulWidget {
   const LiveExerciseScreen({super.key});
@@ -14,274 +15,179 @@ class LiveExerciseScreen extends ConsumerStatefulWidget {
 }
 
 class _LiveExerciseScreenState extends ConsumerState<LiveExerciseScreen> {
-  late ExerciseType _exerciseType;
-  bool _initialized = false;
+  void _endSession() {
+    final notifier = ref.read(exerciseSessionProvider.notifier);
+    final result = notifier.calculateFinalResult();
+    notifier.stopExercise();
+    Navigator.pushReplacementNamed(
+      context,
+      '/exercise_result',
+      arguments: result,
+    );
+  }
 
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    if (!_initialized) {
-      _exerciseType =
-          ModalRoute.of(context)!.settings.arguments as ExerciseType;
-
-      // Start the exercise session logic using the gait stream
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        final btState = ref.read(bluetoothProvider);
-        if (!btState.isConnected) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'No sensor connected. Please connect from Dashboard.',
-              ),
-              backgroundColor: AppColors.warning,
+  void _confirmEnd() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E293B),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text(
+          'End Session?',
+          style: TextStyle(color: Colors.white),
+        ),
+        content: const Text(
+          'Your progress will be saved.',
+          style: TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text(
+              'Continue',
+              style: TextStyle(color: Colors.white54),
             ),
-          );
-        }
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              _endSession();
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            child: const Text('End & Save'),
+          ),
+        ],
+      ),
+    );
+  }
 
-        final stream = ref.read(gaitStreamProvider);
-        ref
-            .read(exerciseSessionProvider.notifier)
-            .startExercise(_exerciseType, stream);
-      });
-
-      _initialized = true;
-    }
+  void _showDisconnectDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => PopScope(
+        canPop: false,
+        child: AlertDialog(
+          backgroundColor: const Color(0xFF1E293B),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: const Row(
+            children: [
+              Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 26),
+              SizedBox(width: 10),
+              Text(
+                'Sensor Disconnected',
+                style: TextStyle(color: Colors.white),
+              ),
+            ],
+          ),
+          content: const Text(
+            'The sensor connection was lost during the exercise.',
+            style: TextStyle(color: Colors.white70),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                _endSession();
+              },
+              child: const Text(
+                'End Session',
+                style: TextStyle(color: Colors.redAccent),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                Navigator.pushNamed(context, '/bluetooth_connect');
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: const Text('Reconnect'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final sessionState = ref.watch(exerciseSessionProvider);
-
-    Color feedbackColor = AppColors.warning;
-    String feedbackText = "Move to target";
-
-    // Define phase labels based on state
-    if (sessionState.isResting) {
-      feedbackColor = AppColors.primary;
-      feedbackText = "Rest: ${sessionState.restSecondsRemaining}s";
-    } else {
-      switch (sessionState.currentPhase) {
-        case RepPhase.movingToTarget:
-          feedbackColor = AppColors.warning;
-          feedbackText = _exerciseType == ExerciseType.kneeBend
-              ? "Bend to target"
-              : "Move to target";
-          break;
-        case RepPhase.holdingTarget:
-          feedbackColor = AppColors.success;
-          feedbackText = "Hold steady!";
-          break;
-        case RepPhase.returning:
-          feedbackColor = Colors.orange;
-          feedbackText = "Return to start";
-          break;
-        case RepPhase.resting:
-          feedbackColor = AppColors.primary;
-          feedbackText = "Rest: ${sessionState.restSecondsRemaining}s";
-          break;
-      }
-    }
-
-    ref.listen<BluetoothState>(bluetoothProvider, (previous, next) {
-      if (previous?.status == BluetoothConnectionStatus.connected &&
+    ref.listen<BluetoothState>(bluetoothProvider, (prev, next) {
+      if (prev?.status == BluetoothConnectionStatus.connected &&
           next.status == BluetoothConnectionStatus.disconnected) {
-        // Immediately pause exercise
         ref.read(exerciseSessionProvider.notifier).pauseExercise();
-
-        showDialog(
-          context: context,
-          barrierDismissible: false,
-          builder: (ctx) => PopScope(
-            canPop: false,
-            onPopInvokedWithResult: (didPop, result) {
-              if (didPop) return;
-              showDialog(
-                context: context,
-                barrierDismissible: false,
-                builder: (ctxDialog) => AlertDialog(
-                  title: const Text('End Exercise?'),
-                  content: const Text(
-                    'Your current progress will be scored and saved. Are you sure?',
-                  ),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.of(ctxDialog).pop(),
-                      child: const Text('CONTINUE EXERCISE'),
-                    ),
-                    ElevatedButton(
-                      onPressed: () {
-                        Navigator.of(ctxDialog).pop();
-                        final notifier = ref.read(
-                          exerciseSessionProvider.notifier,
-                        );
-                        final resultDTO = notifier.calculateFinalScore();
-                        notifier.stopExercise();
-                        Navigator.pushReplacementNamed(
-                          context,
-                          '/exercise_result',
-                          arguments: resultDTO,
-                        );
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.warning,
-                      ),
-                      child: const Text('END & SAVE SCORE'),
-                    ),
-                  ],
-                ),
-              );
-            },
-            child: AlertDialog(
-              backgroundColor: AppColors.surface,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
-              ),
-              title: const Row(
-                children: [
-                  Icon(
-                    Icons.warning_amber_rounded,
-                    color: Colors.orange,
-                    size: 28,
-                  ),
-                  SizedBox(width: 12),
-                  Text('Sensor Disconnected'),
-                ],
-              ),
-              content: const Text(
-                'The sensor connection was lost during exercise.',
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () {
-                    Navigator.pop(ctx);
-                    final result = ref
-                        .read(exerciseSessionProvider.notifier)
-                        .calculateFinalScore();
-                    ref.read(exerciseSessionProvider.notifier).stopExercise();
-                    Navigator.pushReplacementNamed(
-                      context,
-                      '/exercise_result',
-                      arguments: result,
-                    );
-                  },
-                  child: const Text(
-                    'END EXERCISE',
-                    style: TextStyle(color: Colors.red),
-                  ),
-                ),
-                ElevatedButton(
-                  onPressed: () {
-                    Navigator.pop(ctx);
-                    Navigator.pushNamed(context, '/bluetooth_connect');
-                  },
-                  child: const Text('RECONNECT'),
-                ),
-              ],
-            ),
-          ),
-        );
+        _showDisconnectDialog();
       }
     });
 
-    int remainingHold =
-        _exerciseType.requiredHoldSeconds - sessionState.holdSeconds;
-    if (remainingHold < 0) remainingHold = 0;
-
-    final isWaitingForData =
-        sessionState.angleHistory.isEmpty && sessionState.currentAngle == 0.0;
+    final exerciseName = ref.watch(
+      exerciseSessionProvider.select((s) => s.currentExercise.name),
+    );
+    final repProgress = ref.watch(
+      exerciseSessionProvider.select(
+        (s) => '${s.completedReps} / ${s.totalReps} reps',
+      ),
+    );
 
     return PopScope(
       canPop: false,
-      onPopInvokedWithResult: (didPop, result) {
-        if (didPop) return;
-        showDialog(
-          context: context,
-          barrierDismissible: false,
-          builder: (ctxDialog) => AlertDialog(
-            title: const Text('End Exercise?'),
-            content: const Text(
-              'Your current progress will be scored and saved. Are you sure?',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(ctxDialog).pop(),
-                child: const Text('CONTINUE EXERCISE'),
-              ),
-              ElevatedButton(
-                onPressed: () {
-                  Navigator.of(ctxDialog).pop();
-                  final notifier = ref.read(exerciseSessionProvider.notifier);
-                  final resultDTO = notifier.calculateFinalScore();
-                  notifier.stopExercise();
-                  Navigator.pushReplacementNamed(
-                    context,
-                    '/exercise_result',
-                    arguments: resultDTO,
-                  );
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.warning,
-                ),
-                child: const Text('END & SAVE SCORE'),
-              ),
-            ],
-          ),
-        );
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _confirmEnd();
       },
       child: Scaffold(
-        backgroundColor:
-            AppColors.textPrimary, // Dark background for Focus Mode
+        backgroundColor: const Color(0xFF0F172A),
         appBar: AppBar(
-          title: Text(
-            _exerciseType.name,
-            style: const TextStyle(color: Colors.white),
-          ),
           backgroundColor: Colors.transparent,
           elevation: 0,
-          automaticallyImplyLeading: false, // Hide back button
-          actions: [
-            if (sessionState.isPaused)
-              TextButton.icon(
-                onPressed: () {
-                  // Resume logic
-                },
-                icon: const Icon(Icons.play_arrow, color: Colors.white),
-                label: const Text(
-                  'RESUME',
-                  style: TextStyle(color: Colors.white),
+          automaticallyImplyLeading: false,
+          title: Row(
+            children: [
+              Text(
+                exerciseName,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 16,
                 ),
               ),
-            // Dummy Heart Rate Indicator
-            Center(
-              child: Container(
-                margin: const EdgeInsets.only(right: 16),
+              const SizedBox(width: 10),
+              Container(
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 6,
+                  horizontal: 10,
+                  vertical: 4,
                 ),
                 decoration: BoxDecoration(
                   color: Colors.white.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(20),
                 ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(
-                      Icons.favorite,
-                      color: Colors.redAccent,
-                      size: 16,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      '72 bpm',
-                      style: theme.textTheme.labelMedium?.copyWith(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
+                child: Text(
+                  repProgress,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                  ),
                 ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: _confirmEnd,
+              child: Text(
+                'End',
+                style: TextStyle(color: Colors.white.withValues(alpha: 0.6)),
               ),
             ),
           ],
@@ -289,278 +195,46 @@ class _LiveExerciseScreenState extends ConsumerState<LiveExerciseScreen> {
         body: SafeArea(
           child: Column(
             children: [
-              // ── Top Feedback Banner ──
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 300),
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: 20),
-                color: feedbackColor.withValues(alpha: 0.15),
-                alignment: Alignment.center,
-                child: Text(
-                  feedbackText.toUpperCase(),
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 2.0,
-                    color: feedbackColor, // Bright colors pop on dark bg
-                  ),
-                ),
-              ),
-
+              const _CoachingBanner(),
               Expanded(
                 child: Padding(
-                  padding: const EdgeInsets.all(24.0),
+                  padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
                   child: Column(
                     children: [
-                      // ── Rep Progress Info ──
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          _MetricPill(
-                            icon: Icons.repeat,
-                            label: 'Reps',
-                            value:
-                                '${sessionState.completedReps} / ${sessionState.totalReps}',
-                            valueColor: Colors.white,
-                          ),
-                          _MetricPill(
-                            icon: Icons.timer,
-                            label: 'Hold',
-                            value: sessionState.isResting
-                                ? '${sessionState.restSecondsRemaining}s'
-                                : '${sessionState.holdSeconds} / ${_exerciseType.requiredHoldSeconds}s',
-                            valueColor: sessionState.isResting
-                                ? AppColors
-                                      .primaryLight // lighter for dark mode
-                                : (sessionState.holdSeconds >=
-                                          _exerciseType.requiredHoldSeconds
-                                      ? AppColors.success
-                                      : Colors.white),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-
-                      // ── Rep Dots ──
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: List.generate(sessionState.totalReps, (
-                          index,
-                        ) {
-                          Color dotColor = Colors.white.withValues(alpha: 0.2);
-                          if (index < sessionState.completedReps) {
-                            double score = sessionState.repScores[index];
-                            if (score > 70) {
-                              dotColor = AppColors.success;
-                            } else if (score >= 50) {
-                              dotColor = Colors.orange;
-                            } else {
-                              dotColor = AppColors.warning;
-                            }
-                          }
-                          return Container(
-                            margin: const EdgeInsets.symmetric(horizontal: 4),
-                            width: 12,
-                            height: 12,
-                            decoration: BoxDecoration(
-                              color: dotColor,
-                              shape: BoxShape.circle,
-                            ),
-                          );
-                        }),
-                      ),
-
-                      const Spacer(flex: 1),
-
-                      // ── Central Angle Gauge ──
-                      Center(
-                        child: Stack(
-                          alignment: Alignment.center,
-                          children: [
-                            // Gauge arc
-                            SizedBox(
-                              width: 280,
-                              height: 280,
-                              child: CustomPaint(
-                                painter: _TargetGaugePainter(
-                                  currentAngle: sessionState.currentAngle,
-                                  minTarget: sessionState.minTarget,
-                                  maxTarget: sessionState.maxTarget,
-                                  color: feedbackColor,
-                                ),
-                              ),
-                            ),
-                            // Center Content
-                            Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                if (isWaitingForData)
-                                  const Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      CircularProgressIndicator(),
-                                      SizedBox(height: 16),
-                                      Text(
-                                        'Waiting for sensor...',
-                                        style: TextStyle(
-                                          color: AppColors.greyText,
-                                        ),
-                                      ),
-                                    ],
-                                  )
-                                else ...[
-                                  Text(
-                                    'ANGLE',
-                                    style: theme.textTheme.labelLarge?.copyWith(
-                                      color: Colors.white.withValues(
-                                        alpha: 0.5,
-                                      ),
-                                      letterSpacing: 2.0,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                  Text(
-                                    '${sessionState.currentAngle.toStringAsFixed(1)}°',
-                                    style: theme.textTheme.displayLarge
-                                        ?.copyWith(
-                                          fontSize: 64,
-                                          fontWeight: FontWeight.w900,
-                                          color: Colors.white,
-                                          height: 1.1,
-                                        ),
-                                  ),
-                                ],
-                                // Show large countdown when in range
-                                if (sessionState.isInTargetRange &&
-                                    remainingHold > 0)
-                                  Container(
-                                    margin: const EdgeInsets.only(top: 8),
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 16,
-                                      vertical: 6,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: AppColors.success.withValues(
-                                        alpha: 0.2,
-                                      ),
-                                      borderRadius: BorderRadius.circular(20),
-                                    ),
-                                    child: Text(
-                                      'Hold: ${remainingHold}s left',
-                                      style: theme.textTheme.titleMedium
-                                          ?.copyWith(
-                                            color: AppColors.success,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                    ),
-                                  )
-                                else if (remainingHold == 0)
-                                  Container(
-                                    margin: const EdgeInsets.only(top: 8),
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 16,
-                                      vertical: 6,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: AppColors.success,
-                                      borderRadius: BorderRadius.circular(20),
-                                    ),
-                                    child: Text(
-                                      'GOAL REACHED! 🎉',
-                                      style: theme.textTheme.titleMedium
-                                          ?.copyWith(
-                                            color: AppColors.textPrimary,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                      const Spacer(flex: 1),
-
-                      // ── Stability Meter ──
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                'Stability',
-                                style: theme.textTheme.titleSmall?.copyWith(
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.white.withValues(alpha: 0.8),
-                                ),
-                              ),
-                              Text(
-                                '${sessionState.stabilityRaw.toInt()}%',
-                                style: theme.textTheme.titleSmall?.copyWith(
-                                  fontWeight: FontWeight.bold,
-                                  color: sessionState.stabilityRaw > 80
-                                      ? AppColors.success
-                                      : (sessionState.stabilityRaw > 50
-                                            ? Colors.orange
-                                            : AppColors.warning),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(10),
-                            child: LinearProgressIndicator(
-                              value: sessionState.stabilityRaw / 100,
-                              minHeight: 8,
-                              backgroundColor: Colors.white.withValues(
-                                alpha: 0.1,
-                              ),
-                              valueColor: AlwaysStoppedAnimation<Color>(
-                                sessionState.stabilityRaw > 80
-                                    ? AppColors.success
-                                    : (sessionState.stabilityRaw > 50
-                                          ? Colors.orange
-                                          : AppColors.warning),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 32),
-
-                      // ── STOP Button ──
-                      SizedBox(
-                        width: double.infinity,
-                        child: OutlinedButton(
-                          onPressed: () {
-                            // Calculate score and build result object
-                            final notifier = ref.read(
-                              exerciseSessionProvider.notifier,
-                            );
-                            final result = notifier.calculateFinalScore();
-                            notifier.stopExercise();
-
-                            Navigator.pushReplacementNamed(
-                              context,
-                              '/exercise_result',
-                              arguments: result,
-                            );
-                          },
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: Colors.white,
-                            backgroundColor: AppColors.warning.withValues(
-                              alpha: 0.1,
-                            ),
-                            side: BorderSide(
-                              color: AppColors.warning.withValues(alpha: 0.5),
+                      const _RepDotsWidget(),
+                      const SizedBox(height: 20),
+                      const Expanded(child: _GaugeWidget()),
+                      const _MovementQualityBarWidget(),
+                      const SizedBox(height: 20),
+                      // Custom container with explicit dark bg — transparent
+                      // inherits white from parent Material on some themes.
+                      // ✅ Use _confirmEnd (shows dialog) not _endSession directly —
+                      // consistent with the AppBar 'End' button behaviour.
+                      GestureDetector(
+                        onTap: _confirmEnd,
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(vertical: 18),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF0F172A),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: Colors.white.withValues(alpha: 0.25),
                               width: 1.5,
                             ),
-                            padding: const EdgeInsets.symmetric(vertical: 20),
                           ),
-                          child: const Text('FINISH EXERCISE'),
+                          alignment: Alignment.center,
+                          child: const Text(
+                            'End Session',
+                            style: TextStyle(
+                              color: Colors.white70,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
                         ),
                       ),
+                      const SizedBox(height: 16),
                     ],
                   ),
                 ),
@@ -573,50 +247,286 @@ class _LiveExerciseScreenState extends ConsumerState<LiveExerciseScreen> {
   }
 }
 
-// ── Metric Pill Widget ──
-class _MetricPill extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String value;
-  final Color? valueColor;
+// ── Coaching Banner ───────────────────────────────────────────────────────────
+class _CoachingBanner extends ConsumerStatefulWidget {
+  const _CoachingBanner();
 
-  const _MetricPill({
-    required this.icon,
-    required this.label,
-    required this.value,
-    this.valueColor,
-  });
+  @override
+  ConsumerState<_CoachingBanner> createState() => _CoachingBannerState();
+}
+
+class _CoachingBannerState extends ConsumerState<_CoachingBanner> {
+  String _lastCoaching = '';
+  String _lastSpokenBase = '';
+  Key _coachingKey = UniqueKey();
+
+  late final FlutterTts _tts;
+
+  @override
+  void initState() {
+    super.initState();
+    _tts = FlutterTts();
+    _tts.setLanguage('en-US');
+    _tts.setSpeechRate(0.45); // calm, clear pace
+    _tts.setPitch(1.0);
+    _tts.setVolume(1.0);
+  }
+
+  @override
+  void dispose() {
+    _tts.stop();
+    super.dispose();
+  }
+
+  /// Strip emoji so TTS reads clean text, and extract a "base" for dedup.
+  String _cleanForSpeech(String text) {
+    // Remove emoji (most common ranges) and clean up excess whitespace
+    return text
+        .replaceAll(
+          RegExp(r'[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]', unicode: true),
+          '',
+        )
+        .replaceAll('—', ', ')
+        .trim();
+  }
+
+  /// Extract the "base" of a message (without numbers) for dedup.
+  /// e.g. "Breathe easy, 8s rest left" and "Breathe easy, 7s rest left"
+  /// both become "Breathe easy, s rest left" → same base, don't re-speak.
+  String _messageBase(String text) {
+    return text.replaceAll(RegExp(r'\d+'), '');
+  }
+
+  void _speakIfNew(String coaching) {
+    // Check if voice coach is enabled in settings
+    if (!ref.read(voiceCoachProvider)) return;
+
+    final cleanText = _cleanForSpeech(coaching);
+    final base = _messageBase(cleanText);
+
+    // Only speak if the message structure actually changed
+    // (skip re-speaking countdown updates like "8s" → "7s")
+    if (base != _lastSpokenBase && cleanText.isNotEmpty) {
+      _lastSpokenBase = base;
+      _tts.stop(); // cancel previous speech
+      _tts.speak(cleanText);
+    }
+  }
+
+  Color _phaseColor(RepPhase phase) {
+    switch (phase) {
+      case RepPhase.holdingTarget:
+        return AppColors.success;
+      case RepPhase.returning:
+        return const Color(0xFFFBBF24);
+      case RepPhase.resting:
+        return AppColors.primary;
+      case RepPhase.movingToTarget:
+        return Colors.white70;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+    final coaching = ref.watch(
+      exerciseSessionProvider.select((s) => s.coachingMessage),
+    );
+    final phase = ref.watch(
+      exerciseSessionProvider.select((s) => s.currentPhase),
+    );
+    final color = _phaseColor(phase);
+
+    // Only generate a new key if the text actually changes.
+    if (coaching != _lastCoaching) {
+      _lastCoaching = coaching;
+      _coachingKey = UniqueKey();
+      // Speak the new coaching message
+      _speakIfNew(coaching);
+    }
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 350),
+      curve: Curves.easeOut,
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 18),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(20),
+        color: color.withValues(alpha: 0.12),
+        border: Border(
+          bottom: BorderSide(color: color.withValues(alpha: 0.3), width: 1),
+        ),
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 280),
+        child: Text(
+          coaching,
+          key: _coachingKey,
+          style: TextStyle(
+            fontWeight: FontWeight.w700,
+            color: color,
+            letterSpacing: 0.4,
+            fontSize: 15,
+          ),
+          textAlign: TextAlign.center,
+        ),
+      ),
+    );
+  }
+}
+
+// ── Rep Dots ──────────────────────────────────────────────────────────────────
+class _RepDotsWidget extends ConsumerWidget {
+  const _RepDotsWidget();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final total = ref.watch(exerciseSessionProvider.select((s) => s.totalReps));
+    final done = ref.watch(
+      exerciseSessionProvider.select((s) => s.completedReps),
+    );
+
+    return Wrap(
+      alignment: WrapAlignment.center,
+      spacing: 8,
+      runSpacing: 6,
+      children: List.generate(total, (i) {
+        final isDone = i < done;
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 300),
+          width: isDone ? 14 : 12,
+          height: isDone ? 14 : 12,
+          decoration: BoxDecoration(
+            color: isDone
+                ? AppColors.success
+                : Colors.white.withValues(alpha: 0.18),
+            shape: BoxShape.circle,
+            boxShadow: isDone
+                ? [
+                    BoxShadow(
+                      color: AppColors.success.withValues(alpha: 0.5),
+                      blurRadius: 6,
+                    ),
+                  ]
+                : null,
+          ),
+        );
+      }),
+    );
+  }
+}
+
+// ── Gauge Widget ──────────────────────────────────────────────────────────────
+class _GaugeWidget extends ConsumerWidget {
+  const _GaugeWidget();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final angle = ref.watch(
+      exerciseSessionProvider.select((s) => s.currentAngle),
+    );
+    final minT = ref.watch(exerciseSessionProvider.select((s) => s.minTarget));
+    final maxT = ref.watch(exerciseSessionProvider.select((s) => s.maxTarget));
+    final phase = ref.watch(
+      exerciseSessionProvider.select((s) => s.currentPhase),
+    );
+    final inTarget = ref.watch(
+      exerciseSessionProvider.select((s) => s.isInTargetRange),
+    );
+    final holdSecs = ref.watch(
+      exerciseSessionProvider.select((s) => s.holdSeconds),
+    );
+    final exerciseType = ref.watch(
+      exerciseSessionProvider.select((s) => s.currentExercise),
+    );
+
+    final bool isWaiting =
+        angle == 0.0 && phase == RepPhase.resting && holdSecs == 0;
+    final int remainingHold = (exerciseType.requiredHoldSeconds - holdSecs)
+        .clamp(0, 99);
+    // Show absolute angle so the number always grows as the user moves
+    final double absAngle = angle.abs();
+    // Direction label: positive = forward/up flex, negative = back/extension
+    final String dirLabel = angle >= 0 ? '▲ flexion' : '▼ extension';
+
+    return Center(
+      child: Stack(
+        alignment: Alignment.center,
         children: [
-          Icon(icon, size: 20, color: Colors.white.withValues(alpha: 0.6)),
-          const SizedBox(width: 8),
+          RepaintBoundary(
+            child: SizedBox(
+              width: 280,
+              height: 280,
+              child: CustomPaint(
+                painter: _AngleGaugePainter(
+                  currentAngle:
+                      absAngle, // always positive → sweeps 7→5 o'clock
+                  minTarget: minT,
+                  maxTarget: maxT,
+                  phase: phase,
+                  isInTarget: inTarget,
+                ),
+              ),
+            ),
+          ),
           Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(
-                label,
-                style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                  color: Colors.white.withValues(alpha: 0.6),
+              if (isWaiting) ...[
+                const SizedBox(
+                  width: 26,
+                  height: 26,
+                  child: CircularProgressIndicator(
+                    color: Colors.white38,
+                    strokeWidth: 3,
+                  ),
                 ),
-              ),
-              Text(
-                value,
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  color: valueColor ?? Colors.white,
+                const SizedBox(height: 10),
+                const Text(
+                  'Waiting for sensor',
+                  style: TextStyle(color: Colors.white38, fontSize: 12),
                 ),
-              ),
+              ] else ...[
+                Text(
+                  '${absAngle.toStringAsFixed(1)}°',
+                  style: const TextStyle(
+                    fontSize: 62,
+                    fontWeight: FontWeight.w900,
+                    color: Colors.white,
+                    height: 1.0,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  dirLabel,
+                  style: const TextStyle(
+                    color: Colors.white38,
+                    fontSize: 11,
+                    letterSpacing: 1.0,
+                  ),
+                ),
+                if (inTarget &&
+                    phase == RepPhase.holdingTarget &&
+                    remainingHold > 0) ...[
+                  const SizedBox(height: 10),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 7,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppColors.success.withValues(alpha: 0.18),
+                      borderRadius: BorderRadius.circular(24),
+                    ),
+                    child: Text(
+                      'Hold — ${remainingHold}s',
+                      style: const TextStyle(
+                        color: AppColors.success,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 15,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
             ],
           ),
         ],
@@ -625,96 +535,205 @@ class _MetricPill extends StatelessWidget {
   }
 }
 
-// ── Glowing Gauge Arc Painter ──
-class _TargetGaugePainter extends CustomPainter {
+// ── Movement Quality Bar ───────────────────────────────────────────────────────
+class _MovementQualityBarWidget extends ConsumerWidget {
+  const _MovementQualityBarWidget();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final score = ref.watch(
+      exerciseSessionProvider.select((s) => s.stabilityScore),
+    );
+    final phase = ref.watch(
+      exerciseSessionProvider.select((s) => s.currentPhase),
+    );
+    final completedReps = ref.watch(
+      exerciseSessionProvider.select((s) => s.completedReps),
+    );
+
+    // Show 'Ready' until user starts moving (prevents false 'Move slower' label)
+    final bool started = phase != RepPhase.resting || completedReps > 0;
+
+    final color = !started
+        ? Colors.white24
+        : (score > 75
+              ? AppColors.success
+              : (score > 45 ? const Color(0xFFFBBF24) : AppColors.warning));
+    final label = !started
+        ? 'Ready'
+        : (score > 75
+              ? 'Good control'
+              : (score > 45 ? 'Moderate' : 'Move slower'));
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text(
+              'Movement Quality',
+              style: TextStyle(color: Colors.white54, fontSize: 13),
+            ),
+            Text(
+              label,
+              style: TextStyle(
+                color: color,
+                fontWeight: FontWeight.w600,
+                fontSize: 13,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: LinearProgressIndicator(
+            value: started ? score / 100 : 1.0,
+            minHeight: 7,
+            backgroundColor: Colors.white.withValues(alpha: 0.08),
+            valueColor: AlwaysStoppedAnimation<Color>(color),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ── Angle Gauge Painter — 270° arc ────────────────────────────────────────────
+// Starts at 7 o'clock (135°), sweeps 270° clockwise to 5 o'clock.
+// physMin = -10 so 0° neutral sits just past the arc start (dot always visible).
+class _AngleGaugePainter extends CustomPainter {
   final double currentAngle;
   final double minTarget;
   final double maxTarget;
-  final Color color;
+  final RepPhase phase;
+  final bool isInTarget;
 
-  _TargetGaugePainter({
+  const _AngleGaugePainter({
     required this.currentAngle,
     required this.minTarget,
     required this.maxTarget,
-    required this.color,
+    required this.phase,
+    required this.isInTarget,
   });
 
   @override
   void paint(Canvas canvas, Size size) {
     final center = Offset(size.width / 2, size.height / 2);
-    final radius = size.width / 2;
+    final radius = size.width / 2 - 18;
 
-    // Background track
-    final trackPaint = Paint()
-      ..color = AppColors.greyLight.withValues(alpha: 0.2)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 28
-      ..strokeCap = StrokeCap.round;
+    // physMin slightly below 0 so the neutral dot is always visible at rest
+    const double physMin = -10.0;
+    const double physMax = 120.0;
+    const double arcStart = math.pi * 0.75; // 135° = 7 o'clock
+    const double arcTotal = math.pi * 1.5; // 270° sweep
 
-    // Target zone indicator
-    final targetZonePaint = Paint()
-      ..color = AppColors.success.withValues(alpha: 0.15)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 28
-      ..strokeCap = StrokeCap.butt;
-
-    // Glow paint for current value
-    final glowPaint = Paint()
-      ..color = color.withValues(alpha: 0.4)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 36
-      ..strokeCap = StrokeCap.round
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12);
-
-    // Active value arc
-    final valuePaint = Paint()
-      ..color = color
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 28
-      ..strokeCap = StrokeCap.round;
+    double toArcRad(double deg) {
+      final pct = ((deg - physMin) / (physMax - physMin)).clamp(0.0, 1.0);
+      return arcStart + pct * arcTotal;
+    }
 
     final rect = Rect.fromCircle(center: center, radius: radius);
 
-    // Draw background track (270 degrees total span)
-    const startAngle = math.pi * 0.75;
-    const sweepAngle = math.pi * 1.5;
-    canvas.drawArc(rect, startAngle, sweepAngle, false, trackPaint);
-
-    // Draw target zone
-    const maxScale = 120.0;
-    double targetStartPercent = (minTarget / maxScale).clamp(0.0, 1.0);
-    double targetSweepPercent = ((maxTarget - minTarget) / maxScale).clamp(
-      0.0,
-      1.0,
+    // Grey background track
+    canvas.drawArc(
+      rect,
+      arcStart,
+      arcTotal,
+      false,
+      Paint()
+        ..color = Colors.white.withValues(alpha: 0.08)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 24
+        ..strokeCap = StrokeCap.round,
     );
 
-    if (minTarget == maxTarget && minTarget != 0) {
-      targetStartPercent = ((minTarget - 5) / maxScale).clamp(0.0, 1.0);
-      targetSweepPercent = (10 / maxScale).clamp(0.0, 1.0);
+    // Green target zone
+    final tS = toArcRad(minTarget.clamp(physMin, physMax));
+    final tE = toArcRad(maxTarget.clamp(physMin, physMax));
+    if (tE > tS) {
+      canvas.drawArc(
+        rect,
+        tS,
+        tE - tS,
+        false,
+        Paint()
+          ..color = AppColors.success.withValues(alpha: 0.30)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 24
+          ..strokeCap = StrokeCap.butt,
+      );
     }
 
-    double tStartRad = startAngle + (targetStartPercent * sweepAngle);
-    double tSweepRad = targetSweepPercent * sweepAngle;
+    // Neutral 0° tick mark — always a reference point
+    final zeroRad = toArcRad(0.0);
+    canvas.drawLine(
+      Offset(
+        center.dx + (radius - 18) * math.cos(zeroRad),
+        center.dy + (radius - 18) * math.sin(zeroRad),
+      ),
+      Offset(
+        center.dx + (radius + 6) * math.cos(zeroRad),
+        center.dy + (radius + 6) * math.sin(zeroRad),
+      ),
+      Paint()
+        ..color = Colors.white30
+        ..strokeWidth = 3
+        ..strokeCap = StrokeCap.round,
+    );
 
-    if (tSweepRad > 0) {
-      canvas.drawArc(rect, tStartRad, tSweepRad, false, targetZonePaint);
+    // currentAngle is already abs(), so this always sweeps from arc start rightward
+    final arcColor = isInTarget ? AppColors.success : AppColors.primaryLight;
+    final currentRad = toArcRad(currentAngle.clamp(physMin, physMax));
+    final filled = currentRad - arcStart;
+
+    if (filled > 0.01) {
+      // Glow pass
+      canvas.drawArc(
+        rect,
+        arcStart,
+        filled,
+        false,
+        Paint()
+          ..color = arcColor.withValues(alpha: 0.25)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 32
+          ..strokeCap = StrokeCap.round
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 10),
+      );
+      // Solid pass
+      canvas.drawArc(
+        rect,
+        arcStart,
+        filled,
+        false,
+        Paint()
+          ..color = arcColor
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 24
+          ..strokeCap = StrokeCap.round,
+      );
     }
 
-    // Draw current value
-    double currentPercent = (currentAngle / maxScale).clamp(0.0, 1.0);
-    double currentSweepRad = currentPercent * sweepAngle;
-
-    if (currentSweepRad > 0) {
-      // Draw glow first, then the solid path
-      canvas.drawArc(rect, startAngle, currentSweepRad, false, glowPaint);
-      canvas.drawArc(rect, startAngle, currentSweepRad, false, valuePaint);
-    }
+    // Tip dot — ALWAYS drawn (even at 0° / tiny sweep) so the indicator
+    // is always visible and not mysteriously absent at rest.
+    final tipX = center.dx + radius * math.cos(currentRad);
+    final tipY = center.dy + radius * math.sin(currentRad);
+    canvas.drawCircle(
+      Offset(tipX, tipY),
+      16,
+      Paint()
+        ..color = arcColor.withValues(alpha: 0.28)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8),
+    );
+    canvas.drawCircle(Offset(tipX, tipY), 10, Paint()..color = arcColor);
   }
 
   @override
-  bool shouldRepaint(covariant _TargetGaugePainter oldDelegate) {
-    return oldDelegate.currentAngle != currentAngle ||
-        oldDelegate.color != color ||
-        oldDelegate.minTarget != minTarget;
-  }
+  bool shouldRepaint(covariant _AngleGaugePainter old) =>
+      old.currentAngle != currentAngle ||
+      old.isInTarget != isInTarget ||
+      old.minTarget != minTarget ||
+      old.maxTarget != maxTarget;
 }

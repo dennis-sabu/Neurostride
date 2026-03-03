@@ -21,7 +21,7 @@
       android:name="android.permission.ACCESS_COARSE_LOCATION"/>
 
     <application
-        android:label="Nurostride"
+        android:label="Neurostride"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

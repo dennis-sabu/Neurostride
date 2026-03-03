@@ -60,56 +60,62 @@ class AppTheme {
       brightness: Brightness.light,
       colorScheme: base,
       scaffoldBackgroundColor: AppColors.background,
-      textTheme: GoogleFonts.interTextTheme().copyWith(
-        displayLarge: GoogleFonts.inter(
+      textTheme: GoogleFonts.plusJakartaSansTextTheme().copyWith(
+        displayLarge: GoogleFonts.plusJakartaSans(
           color: AppColors.textPrimary,
           fontWeight: FontWeight.w800,
         ),
-        displayMedium: GoogleFonts.inter(
+        displayMedium: GoogleFonts.plusJakartaSans(
           color: AppColors.textPrimary,
           fontWeight: FontWeight.w800,
         ),
-        displaySmall: GoogleFonts.inter(
+        displaySmall: GoogleFonts.plusJakartaSans(
           color: AppColors.textPrimary,
           fontWeight: FontWeight.bold,
         ),
-        headlineLarge: GoogleFonts.inter(
+        headlineLarge: GoogleFonts.plusJakartaSans(
           color: AppColors.textPrimary,
           fontWeight: FontWeight.w700,
         ),
-        headlineMedium: GoogleFonts.inter(
+        headlineMedium: GoogleFonts.plusJakartaSans(
           color: AppColors.textPrimary,
           fontWeight: FontWeight.w700,
         ),
-        headlineSmall: GoogleFonts.inter(
+        headlineSmall: GoogleFonts.plusJakartaSans(
           color: AppColors.textPrimary,
           fontWeight: FontWeight.w600,
         ),
-        titleLarge: GoogleFonts.inter(
+        titleLarge: GoogleFonts.plusJakartaSans(
           color: AppColors.textPrimary,
           fontWeight: FontWeight.w600,
           fontSize: 17,
         ),
-        titleMedium: GoogleFonts.inter(
+        titleMedium: GoogleFonts.plusJakartaSans(
           color: AppColors.textPrimary,
           fontWeight: FontWeight.w600,
           fontSize: 15,
         ),
-        titleSmall: GoogleFonts.inter(
+        titleSmall: GoogleFonts.plusJakartaSans(
           color: AppColors.textPrimary,
           fontWeight: FontWeight.w500,
           fontSize: 13,
         ),
-        bodyLarge: GoogleFonts.inter(
+        bodyLarge: GoogleFonts.plusJakartaSans(
           color: AppColors.textPrimary,
           fontSize: 15,
         ),
-        bodyMedium: GoogleFonts.inter(
+        bodyMedium: GoogleFonts.plusJakartaSans(
           color: AppColors.textPrimary,
           fontSize: 14,
         ),
-        bodySmall: GoogleFonts.inter(color: AppColors.greyText, fontSize: 12),
-        labelSmall: GoogleFonts.inter(color: AppColors.greyText, fontSize: 11),
+        bodySmall: GoogleFonts.plusJakartaSans(
+          color: AppColors.greyText,
+          fontSize: 12,
+        ),
+        labelSmall: GoogleFonts.plusJakartaSans(
+          color: AppColors.greyText,
+          fontSize: 11,
+        ),
       ),
       appBarTheme: AppBarTheme(
         backgroundColor: AppColors.background,
@@ -122,7 +128,7 @@ class AppTheme {
           statusBarIconBrightness: Brightness.dark,
           statusBarBrightness: Brightness.light,
         ),
-        titleTextStyle: GoogleFonts.inter(
+        titleTextStyle: GoogleFonts.plusJakartaSans(
           color: AppColors.textPrimary,
           fontSize: 17,
           fontWeight: FontWeight.w600,
@@ -140,14 +146,14 @@ class AppTheme {
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
-          backgroundColor: AppColors.primary,
+          backgroundColor: AppColors.deepTeal,
           foregroundColor: Colors.white,
           elevation: 0,
           padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 28),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
           ),
-          textStyle: GoogleFonts.inter(
+          textStyle: GoogleFonts.plusJakartaSans(
             fontSize: 15,
             fontWeight: FontWeight.w700,
             letterSpacing: 0.3,
@@ -163,7 +169,7 @@ class AppTheme {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
           ),
-          textStyle: GoogleFonts.inter(
+          textStyle: GoogleFonts.plusJakartaSans(
             fontSize: 15,
             fontWeight: FontWeight.w600,
           ),
@@ -188,9 +194,15 @@ class AppTheme {
           horizontal: 20,
           vertical: 18,
         ),
-        labelStyle: GoogleFonts.inter(color: AppColors.greyText, fontSize: 14),
+        labelStyle: GoogleFonts.plusJakartaSans(
+          color: AppColors.greyText,
+          fontSize: 14,
+        ),
         prefixIconColor: AppColors.greyText,
-        hintStyle: GoogleFonts.inter(color: AppColors.greyText, fontSize: 14),
+        hintStyle: GoogleFonts.plusJakartaSans(
+          color: AppColors.greyText,
+          fontSize: 14,
+        ),
       ),
       iconTheme: const IconThemeData(color: AppColors.textPrimary),
       dividerTheme: const DividerThemeData(
